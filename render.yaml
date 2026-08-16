@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: todo-mcp-http
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm run http
+    envVars:
+      - key: MCP_KEY
+        sync: false
