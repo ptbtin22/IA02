@@ -1,6 +1,8 @@
 import type { Request, Response, NextFunction } from "express";
+import crypto from "node:crypto";
 
-const KEY = process.env.MCP_KEY || "secret-key-123";
+// Fallback to random secure hex token if process.env.MCP_KEY is unconfigured
+const KEY = process.env.MCP_KEY || crypto.randomBytes(32).toString("hex");
 
 /**
  * Bearer Token API Key Guard Middleware for Express /mcp route.

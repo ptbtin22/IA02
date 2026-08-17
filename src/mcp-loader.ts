@@ -8,6 +8,18 @@ import type { LoadedMcpClients, McpConfig } from "./types.js";
 const CONFIG_PATH = process.env.MCP_CONFIG || "config.json";
 
 /**
+ * Replace environment variable placeholders (${VAR_NAME}) in header strings
+ */
+function interpolateEnvVars(headers?: Record<string, string>): Record<string, string> {
+  if (!headers) return {};
+  const resolved: Record<string, string> = {};
+  for (const [key, val] of Object.entries(headers)) {
+    resolved[key] = val.replace(/\$\{([^}]+)\}/g, (_, envName) => process.env[envName] || "secret-key-123");
+  }
+  return resolved;
+}
+
+/**
  * Connect to configured MCP servers (stdio and HTTP) defined in config.json
  */
 export async function loadMcpClients(): Promise<LoadedMcpClients> {
@@ -33,9 +45,10 @@ export async function loadMcpClients(): Promise<LoadedMcpClients> {
           args: serverConf.args || [],
         });
       } else if (serverConf.url) {
+        const resolvedHeaders = interpolateEnvVars(serverConf.headers);
         transport = new StreamableHTTPClientTransport(new URL(serverConf.url), {
           requestInit: {
-            headers: serverConf.headers || {},
+            headers: resolvedHeaders,
           },
         });
       }

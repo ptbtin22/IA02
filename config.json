@@ -7,13 +7,13 @@
     "system-http-local": {
       "url": "http://localhost:3000/mcp",
       "headers": {
-        "Authorization": "Bearer secret-key-123"
+        "Authorization": "Bearer ${MCP_KEY}"
       }
     },
     "todo-http-public": {
       "url": "https://todo-mcp-http.onrender.com/mcp",
       "headers": {
-        "Authorization": "Bearer secret-key-123"
+        "Authorization": "Bearer ${MCP_KEY}"
       }
     }
   }
