@@ -1,10 +1,10 @@
 {
   "mcpServers": {
-    "todo-stdio": {
+    "notes-stdio": {
       "command": "npx",
-      "args": ["tsx", "server.ts"]
+      "args": ["tsx", "notes-server.ts"]
     },
-    "todo-http-local": {
+    "system-http-local": {
       "url": "http://localhost:3000/mcp",
       "headers": {
         "Authorization": "Bearer secret-key-123"

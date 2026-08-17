@@ -1,15 +1,15 @@
 {
   "name": "todo-mcp",
   "version": "1.0.0",
-  "description": "MCP Integration and Agent Host Implementation (TypeScript)",
-  "main": "server.ts",
+  "description": "3 Distinct MCP Servers (Notes Stdio, System Local HTTP, Todo Public Render) & Remote Agent Host",
+  "main": "notes-server.ts",
   "type": "module",
   "scripts": {
-    "start": "tsx server.ts",
-    "server": "tsx server.ts",
+    "start": "tsx notes-server.ts",
+    "notes": "tsx notes-server.ts",
     "http": "tsx http.ts",
     "agent": "tsx agent.ts",
-    "inspector": "npx @modelcontextprotocol/inspector npx tsx server.ts",
+    "inspector": "npx @modelcontextprotocol/inspector npx tsx notes-server.ts",
     "typecheck": "tsc --noEmit"
   },
   "keywords": ["mcp", "model-context-protocol", "agent", "todo", "typescript"],
