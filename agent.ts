@@ -4,28 +4,34 @@ import type { AdvertisedTool, ChatMessage } from "./src/types.js";
 import { loadSkillsIndex } from "./src/skills.js";
 import { loadMcpClients } from "./src/mcp-loader.js";
 import { getChatCompletion } from "./src/llm.js";
+import { ia01LocalTools, executeLocalTool } from "./src/local-tools.js";
+import { loadSession, saveSession, clearSession, pruneMessages } from "./src/session.js";
 
 /**
- * Execute a single turn loop for a user query
+ * Execute a multi-step agent loop for a user prompt
  */
 async function runQueryLoop(
   userPrompt: string,
   messages: ChatMessage[],
   advertisedTools: AdvertisedTool[],
   skills: ReturnType<typeof loadSkillsIndex>,
-  clientsMap: Awaited<ReturnType<typeof loadMcpClients>>["clientsMap"]
+  clientsMap: Awaited<ReturnType<typeof loadMcpClients>>["clientsMap"],
+  rl?: readline.Interface
 ): Promise<void> {
   messages.push({ role: "user", content: userPrompt });
+  await saveSession(messages);
 
   let turn = 0;
-  const MAX_TURNS = 10;
+  const MAX_TURNS = 15;
 
   while (turn < MAX_TURNS) {
     turn++;
     console.log(`--- Agent Loop Turn ${turn} ---`);
 
-    const assistantMsg = await getChatCompletion(messages, advertisedTools);
+    const prunedHistory = pruneMessages(messages, 20);
+    const assistantMsg = await getChatCompletion(prunedHistory, advertisedTools);
     messages.push(assistantMsg);
+    await saveSession(messages);
 
     if (!assistantMsg.tool_calls || assistantMsg.tool_calls.length === 0) {
       console.log(`\n💬 Agent Response:\n${assistantMsg.content}\n`);
@@ -42,12 +48,24 @@ async function runQueryLoop(
 
       let resultText = "";
 
+      // 1. Skill tool loader
       if (fnName === "use_skill") {
         const skillName = String(fnArgs.name || "");
         const skill = skills.find((s) => s.name === skillName);
         resultText = skill ? skill.fullContent : `Skill ${skillName} not found.`;
         console.log(`   -> Loaded skill instructions for "${skillName}"`);
-      } else if (clientsMap.has(fnName)) {
+      }
+      // 2. IA01 Local File / Command tools
+      else if (ia01LocalTools.some((t) => t.function.name === fnName)) {
+        try {
+          resultText = await executeLocalTool(fnName, fnArgs, rl);
+          console.log(`   -> Local Tool Result: ${resultText.slice(0, 100)}...`);
+        } catch (err: unknown) {
+          resultText = `Error: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
+      // 3. MCP Server tools (stdio / HTTP)
+      else if (clientsMap.has(fnName)) {
         const client = clientsMap.get(fnName)!;
         const res = await client.callTool({ name: fnName, arguments: fnArgs });
         if (Array.isArray(res.content)) {
@@ -68,6 +86,7 @@ async function runQueryLoop(
         name: fnName,
         content: resultText,
       });
+      await saveSession(messages);
     }
   }
 }
@@ -79,7 +98,8 @@ async function main(): Promise<void> {
   const skills = loadSkillsIndex();
   const { clientsMap, allMcpTools } = await loadMcpClients();
 
-  const localTools: AdvertisedTool[] = [
+  // Local tool: use_skill
+  const skillTools: AdvertisedTool[] = [
     {
       type: "function",
       function: {
@@ -96,8 +116,10 @@ async function main(): Promise<void> {
     },
   ];
 
+  // Merge IA01 Local tools + Skill loader + MCP Server tools
   const advertisedTools: AdvertisedTool[] = [
-    ...localTools,
+    ...ia01LocalTools,
+    ...skillTools,
     ...allMcpTools.map((t) => ({
       type: "function" as const,
       function: {
@@ -109,13 +131,13 @@ async function main(): Promise<void> {
   ];
 
   const skillsListStr = skills.map((s) => `- ${s.name}: ${s.description}`).join("\n");
-  const systemPrompt = `You are a helpful AI coding and task management agent.
+  const systemPrompt = `You are an AI coding and task management agent built on IA01 + IA02 MCP Host architecture.
 Available skills:
 ${skillsListStr || "(No skills found)"}
 
 If a user request matches a skill, call use_skill FIRST, then follow its steps.`;
 
-  const messages: ChatMessage[] = [{ role: "system", content: systemPrompt }];
+  let messages = await loadSession(systemPrompt);
 
   // Single-query mode if CLI argument provided
   if (process.argv[2]) {
@@ -127,7 +149,7 @@ If a user request matches a skill, call use_skill FIRST, then follow its steps.`
 
   // Interactive REPL Chat Mode
   console.log("\n💬 Interactive MCP Agent Chat Mode Started!");
-  console.log("Type your prompt and press Enter. Type 'exit' or 'quit' to stop.\n");
+  console.log("Type your prompt and press Enter. Type 'reset' to clear session. Type 'exit' to stop.\n");
 
   const rl = readline.createInterface({ input, output });
 
@@ -141,8 +163,13 @@ If a user request matches a skill, call use_skill FIRST, then follow its steps.`
         console.log("👋 Goodbye!");
         break;
       }
+      if (trimmed.toLowerCase() === "clear" || trimmed.toLowerCase() === "reset") {
+        messages = await clearSession(systemPrompt);
+        console.log("🧹 Session cleared.");
+        continue;
+      }
 
-      await runQueryLoop(trimmed, messages, advertisedTools, skills, clientsMap);
+      await runQueryLoop(trimmed, messages, advertisedTools, skills, clientsMap, rl);
     }
   } finally {
     rl.close();
