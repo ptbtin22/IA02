@@ -1,62 +1,21 @@
+import readline from "node:readline/promises";
+import { stdin as input, stdout as output } from "node:process";
 import type { AdvertisedTool, ChatMessage } from "./src/types.js";
 import { loadSkillsIndex } from "./src/skills.js";
 import { loadMcpClients } from "./src/mcp-loader.js";
 import { getChatCompletion } from "./src/llm.js";
 
 /**
- * Main Agent Execution Loop
+ * Execute a single turn loop for a user query
  */
-async function main(): Promise<void> {
-  const userPrompt = process.argv[2] || "Standup time - what's on today?";
-  console.log(`\n🤖 User Ask: "${userPrompt}"\n`);
-
-  // 1. Load skills & MCP clients
-  const skills = loadSkillsIndex();
-  const { clientsMap, allMcpTools } = await loadMcpClients();
-
-  // 2. Local tool: use_skill
-  const localTools: AdvertisedTool[] = [
-    {
-      type: "function",
-      function: {
-        name: "use_skill",
-        description: "Load a skill's full procedural instructions by name",
-        parameters: {
-          type: "object",
-          properties: {
-            name: { type: "string", description: "Name of the skill to load" },
-          },
-          required: ["name"],
-        },
-      },
-    },
-  ];
-
-  // 3. Merge MCP tools with local tools
-  const advertisedTools: AdvertisedTool[] = [
-    ...localTools,
-    ...allMcpTools.map((t) => ({
-      type: "function" as const,
-      function: {
-        name: t.name,
-        description: t.description,
-        parameters: (t.inputSchema as Record<string, unknown>) || { type: "object", properties: {} },
-      },
-    })),
-  ];
-
-  // 4. System prompt with progressive disclosure instructions
-  const skillsListStr = skills.map((s) => `- ${s.name}: ${s.description}`).join("\n");
-  const systemPrompt = `You are a helpful AI coding and task management agent.
-Available skills:
-${skillsListStr || "(No skills found)"}
-
-If a user request matches a skill, call use_skill FIRST, then follow its steps.`;
-
-  const messages: ChatMessage[] = [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: userPrompt },
-  ];
+async function runQueryLoop(
+  userPrompt: string,
+  messages: ChatMessage[],
+  advertisedTools: AdvertisedTool[],
+  skills: ReturnType<typeof loadSkillsIndex>,
+  clientsMap: Awaited<ReturnType<typeof loadMcpClients>>["clientsMap"]
+): Promise<void> {
+  messages.push({ role: "user", content: userPrompt });
 
   let turn = 0;
   const MAX_TURNS = 10;
@@ -111,8 +70,84 @@ If a user request matches a skill, call use_skill FIRST, then follow its steps.`
       });
     }
   }
+}
 
-  process.exit(0);
+/**
+ * Main Agent Entry Point
+ */
+async function main(): Promise<void> {
+  const skills = loadSkillsIndex();
+  const { clientsMap, allMcpTools } = await loadMcpClients();
+
+  const localTools: AdvertisedTool[] = [
+    {
+      type: "function",
+      function: {
+        name: "use_skill",
+        description: "Load a skill's full procedural instructions by name",
+        parameters: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Name of the skill to load" },
+          },
+          required: ["name"],
+        },
+      },
+    },
+  ];
+
+  const advertisedTools: AdvertisedTool[] = [
+    ...localTools,
+    ...allMcpTools.map((t) => ({
+      type: "function" as const,
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: (t.inputSchema as Record<string, unknown>) || { type: "object", properties: {} },
+      },
+    })),
+  ];
+
+  const skillsListStr = skills.map((s) => `- ${s.name}: ${s.description}`).join("\n");
+  const systemPrompt = `You are a helpful AI coding and task management agent.
+Available skills:
+${skillsListStr || "(No skills found)"}
+
+If a user request matches a skill, call use_skill FIRST, then follow its steps.`;
+
+  const messages: ChatMessage[] = [{ role: "system", content: systemPrompt }];
+
+  // Single-query mode if CLI argument provided
+  if (process.argv[2]) {
+    const userPrompt = process.argv.slice(2).join(" ");
+    console.log(`\n🤖 User Ask: "${userPrompt}"\n`);
+    await runQueryLoop(userPrompt, messages, advertisedTools, skills, clientsMap);
+    process.exit(0);
+  }
+
+  // Interactive REPL Chat Mode
+  console.log("\n💬 Interactive MCP Agent Chat Mode Started!");
+  console.log("Type your prompt and press Enter. Type 'exit' or 'quit' to stop.\n");
+
+  const rl = readline.createInterface({ input, output });
+
+  try {
+    while (true) {
+      const userInput = await rl.question("You> ");
+      const trimmed = userInput.trim();
+
+      if (!trimmed) continue;
+      if (trimmed.toLowerCase() === "exit" || trimmed.toLowerCase() === "quit") {
+        console.log("👋 Goodbye!");
+        break;
+      }
+
+      await runQueryLoop(trimmed, messages, advertisedTools, skills, clientsMap);
+    }
+  } finally {
+    rl.close();
+    process.exit(0);
+  }
 }
 
 main().catch((err) => {
