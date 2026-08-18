@@ -1,9 +1,5 @@
 import type { ChatMessage, AdvertisedTool } from "./types.js";
 
-const LLM_BASE_URL = process.env.LLM_BASE_URL || "https://ai-fit.hcmus.edu.vn/openai";
-const LLM_API_KEY = process.env.LLM_API_KEY || "";
-const LLM_MODEL = process.env.LLM_MODEL || "Qwen3.6-27B";
-
 /**
  * Send Chat Completion request to Remote LLM endpoint (OpenAI JSON API spec)
  */
@@ -11,16 +7,21 @@ export async function getChatCompletion(
   messages: ChatMessage[],
   tools?: AdvertisedTool[]
 ): Promise<ChatMessage> {
-  if (!LLM_API_KEY) {
+  // Read environment variables dynamically at function call time (after process.loadEnvFile has run)
+  const apiKey = process.env.LLM_API_KEY || "";
+  const baseUrl = process.env.LLM_BASE_URL || "https://ai-fit.hcmus.edu.vn/openai";
+  const model = process.env.LLM_MODEL || "Qwen3.6-27B";
+
+  if (!apiKey) {
     console.warn("⚠️ [LLM API] LLM_API_KEY not found in process.env. Using mock fallback decision engine.");
     return mockAgentDecision(messages);
   }
 
-  const endpoint = `${LLM_BASE_URL.replace(/\/$/, "")}/chat/completions`;
+  const endpoint = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
 
   try {
     const payload: Record<string, unknown> = {
-      model: LLM_MODEL,
+      model,
       messages,
       temperature: 0.2,
     };
@@ -30,11 +31,13 @@ export async function getChatCompletion(
       payload.tool_choice = "auto";
     }
 
+    console.log(`📡 [LLM API] Connecting to remote model: ${model} (${endpoint})...`);
+
     const res = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${LLM_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify(payload),
     });
