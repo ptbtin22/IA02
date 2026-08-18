@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "tsx render-server.ts",
-    "http": "tsx http.ts",
+    "http": "tsx football-http-local.ts",
     "weather": "tsx weather-server.ts",
     "agent": "tsx agent.ts",
     "inspector": "npx @modelcontextprotocol/inspector npx tsx weather-server.ts",
