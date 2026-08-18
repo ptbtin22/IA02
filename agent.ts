@@ -130,10 +130,8 @@ async function main(): Promise<void> {
     },
   ];
 
-  // Merge IA01 Local tools + Skill loader + MCP Server tools
+  // Prioritize MCP Server tools FIRST, followed by skill loader and local workspace tools
   const advertisedTools: AdvertisedTool[] = [
-    ...ia01LocalTools,
-    ...skillTools,
     ...allMcpTools.map((t) => ({
       type: "function" as const,
       function: {
@@ -142,13 +140,30 @@ async function main(): Promise<void> {
         parameters: (t.inputSchema as Record<string, unknown>) || { type: "object", properties: {} },
       },
     })),
+    ...skillTools,
+    ...ia01LocalTools,
   ];
 
+  // Deduplicate resources and prompts by URI / name
+  const uniqueResourcesMap = new Map<string, (typeof allMcpResources)[0]>();
+  for (const r of allMcpResources) uniqueResourcesMap.set(r.uri, r);
+
+  const uniquePromptsMap = new Map<string, (typeof allMcpPrompts)[0]>();
+  for (const p of allMcpPrompts) uniquePromptsMap.set(p.name, p);
+
   const skillsListStr = skills.map((s) => `- ${s.name}: ${s.description}`).join("\n");
-  const resourcesListStr = allMcpResources.map((r) => `- ${r.uri} (${r.name}): ${r.description || ""}`).join("\n");
-  const promptsListStr = allMcpPrompts.map((p) => `- ${p.name}: ${p.description || ""}`).join("\n");
+  const resourcesListStr = Array.from(uniqueResourcesMap.values())
+    .map((r) => `- ${r.uri} (${r.name}): ${r.description || ""}`)
+    .join("\n");
+  const promptsListStr = Array.from(uniquePromptsMap.values())
+    .map((p) => `- ${p.name}: ${p.description || ""}`)
+    .join("\n");
 
   const systemPrompt = `You are an AI coding and task management agent built on IA01 + IA02 MCP Host architecture.
+
+CRITICAL ROUTING RULES:
+1. TASK MANAGEMENT: For any task/todo query (e.g. "what tasks do i have?", "list my todo", "add task", "my tasks"), you MUST call the list_tasks / add_task / complete_task MCP tools from todo-http-public. Do NOT call list_files or read_file for user todo tasks!
+2. SKILLS: If a user request matches a skill, call use_skill FIRST, then follow its steps.
 
 Available Skills:
 ${skillsListStr || "(No skills found)"}
@@ -157,9 +172,7 @@ Available MCP Resources:
 ${resourcesListStr || "(No resources found)"}
 
 Available MCP Prompts:
-${promptsListStr || "(No prompts found)"}
-
-If a user request matches a skill, call use_skill FIRST, then follow its steps.`;
+${promptsListStr || "(No prompts found)"}`;
 
   let messages = await loadSession(systemPrompt);
 
