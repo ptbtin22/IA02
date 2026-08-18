@@ -14,7 +14,7 @@ function interpolateEnvVars(headers?: Record<string, string>): Record<string, st
   if (!headers) return {};
   const resolved: Record<string, string> = {};
   for (const [key, val] of Object.entries(headers)) {
-    resolved[key] = val.replace(/\$\{([^}]+)\}/g, (_, envName) => process.env[envName] || "secret-key-123");
+    resolved[key] = val.replace(/\$\{([^}]+)\}/g, (_, envName) => process.env[envName] || "");
   }
   return resolved;
 }

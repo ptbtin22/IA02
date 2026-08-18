@@ -1,4 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
 const API_BASE = "https://api.football-data.org/v4";
@@ -18,7 +20,6 @@ async function fetchFootballData(endpoint: string): Promise<Record<string, unkno
   try {
     const res = await fetch(`${API_BASE}${endpoint}`, { headers });
     if (!res.ok) {
-      // Fallback demo data if no key or rate limited
       return getDemoFootballData(endpoint);
     }
     return (await res.json()) as Record<string, unknown>;
@@ -173,4 +174,11 @@ export function createFootballServer(): McpServer {
   );
 
   return server;
+}
+
+// Connect via Stdio transport if executed directly
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (isMain) {
+  const server = createFootballServer();
+  await server.connect(new StdioServerTransport());
 }
