@@ -12,6 +12,7 @@ export async function getChatCompletion(
   tools?: AdvertisedTool[]
 ): Promise<ChatMessage> {
   if (!LLM_API_KEY) {
+    console.warn("⚠️ [LLM API] LLM_API_KEY not found in process.env. Using mock fallback decision engine.");
     return mockAgentDecision(messages);
   }
 
@@ -40,7 +41,7 @@ export async function getChatCompletion(
 
     if (!res.ok) {
       const errText = await res.text();
-      console.error(`LLM API Call Notice (${res.status}): ${errText}`);
+      console.error(`⚠️ [LLM API Error ${res.status}]: ${errText}. Falling back to mock decision engine.`);
       return mockAgentDecision(messages);
     }
 
@@ -50,9 +51,14 @@ export async function getChatCompletion(
       }>;
     };
 
-    return data.choices[0]?.message || mockAgentDecision(messages);
+    if (data.choices && data.choices.length > 0 && data.choices[0].message) {
+      return data.choices[0].message;
+    }
+
+    console.warn("⚠️ [LLM API] Empty choices returned from LLM endpoint. Falling back to mock decision engine.");
+    return mockAgentDecision(messages);
   } catch (err) {
-    console.error("LLM API Fetch Error:", err);
+    console.error("⚠️ [LLM API Fetch Error]:", err, "Falling back to mock decision engine.");
     return mockAgentDecision(messages);
   }
 }
