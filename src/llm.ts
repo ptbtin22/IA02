@@ -9,11 +9,11 @@ export async function getChatCompletion(
 ): Promise<ChatMessage> {
   // Read environment variables dynamically at function call time (after process.loadEnvFile has run)
   const apiKey = process.env.LLM_API_KEY || "";
-  const baseUrl = process.env.LLM_BASE_URL || "https://ai-fit.hcmus.edu.vn/openai";
-  const model = process.env.LLM_MODEL || "Qwen3.6-27B";
+  const baseUrl = process.env.LLM_BASE_URL || "";
+  const model = process.env.LLM_MODEL || "";
 
-  if (!apiKey) {
-    console.warn("⚠️ [LLM API] LLM_API_KEY not found in process.env. Using mock fallback decision engine.");
+  if (!apiKey || !baseUrl || !model) {
+    console.warn("⚠️ [LLM API] Missing LLM_API_KEY, LLM_BASE_URL, or LLM_MODEL in process.env. Using mock fallback decision engine.");
     return mockAgentDecision(messages);
   }
 
