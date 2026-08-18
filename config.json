@@ -4,9 +4,8 @@
       "command": "npx",
       "args": ["tsx", "weather-server.ts"]
     },
-    "football-stdio": {
-      "command": "npx",
-      "args": ["tsx", "src/football-server.ts"]
+    "football-http-local": {
+      "url": "http://localhost:3000/football"
     },
     "todo-http-public": {
       "url": "https://todo-mcp-http.onrender.com/mcp",
