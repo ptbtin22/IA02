@@ -1,3 +1,9 @@
+try {
+  process.loadEnvFile(".env");
+} catch (e) {
+  // .env file optional if env vars are already set in environment
+}
+
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import type { AdvertisedTool, ChatMessage } from "./src/types.js";

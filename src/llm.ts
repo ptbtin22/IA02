@@ -65,171 +65,129 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
   const userText = lastUserMsg?.content || "";
   const lowerMsg = userText.toLowerCase();
 
-  const loadedSkills = messages
-    .filter((m) => m.role === "tool" && m.name === "use_skill")
-    .map((m) => m.content || "");
-  const hasLoadedAnySkill = loadedSkills.length > 0;
+  const lastMsg = messages[messages.length - 1];
 
-  const hasListTaskResult = messages.some((m) => m.role === "tool" && m.name === "list_tasks");
-  const hasStandingsResult = messages.some((m) => m.role === "tool" && m.name === "get_competition_standings");
-  const hasWeatherResult = messages.some((m) => m.role === "tool" && m.name === "get_current_weather");
+  // If previous turn returned tool execution results, synthesize final response
+  if (lastMsg && lastMsg.role === "tool") {
+    if (lastMsg.name === "use_skill") {
+      const skillContent = lastMsg.content || "";
+      if (skillContent.includes("matchday-briefing")) {
+        return {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "call_football_standings",
+              type: "function",
+              function: {
+                name: "get_competition_standings",
+                arguments: JSON.stringify({ competition: "PL" }),
+              },
+            },
+          ],
+        };
+      }
+      if (skillContent.includes("daily-standup")) {
+        return {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "call_list_tasks",
+              type: "function",
+              function: {
+                name: "list_tasks",
+                arguments: "{}",
+              },
+            },
+          ],
+        };
+      }
+    }
+
+    if (lastMsg.name === "get_competition_standings") {
+      return {
+        role: "assistant",
+        content: `### ⚽ Premier League Matchday Briefing & Title Race Breakdown\n\n${lastMsg.content}\n\n### 📝 Title Race Analysis:\n- **Arsenal & Liverpool** are level on 64 points, with Arsenal leading on goal difference (+45 vs +39).\n- **Manchester City** is just 1 point behind (63 pts), keeping the title race extremely tight!`,
+      };
+    }
+
+    if (lastMsg.name === "list_tasks") {
+      return {
+        role: "assistant",
+        content: `### 📋 Your Active Tasks\n\n${lastMsg.content}\n\nWhat would you like to work on next?`,
+      };
+    }
+
+    return {
+      role: "assistant",
+      content: `I've retrieved the requested data:\n\n${lastMsg.content}`,
+    };
+  }
 
   // 1. Skill Triggers (Calls use_skill FIRST)
-  if (!hasLoadedAnySkill) {
-    if (lowerMsg.includes("standup") || lowerMsg.includes("today") || lowerMsg.includes("plan")) {
-      return {
-        role: "assistant",
-        content: null,
-        tool_calls: [
-          {
-            id: "call_skill_standup",
-            type: "function",
-            function: {
-              name: "use_skill",
-              arguments: JSON.stringify({ name: "daily-standup" }),
-            },
+  if (lowerMsg.includes("standup") || lowerMsg.includes("today") || lowerMsg.includes("plan")) {
+    return {
+      role: "assistant",
+      content: null,
+      tool_calls: [
+        {
+          id: "call_skill_standup",
+          type: "function",
+          function: {
+            name: "use_skill",
+            arguments: JSON.stringify({ name: "daily-standup" }),
           },
-        ],
-      };
-    }
-    if (
-      lowerMsg.includes("briefing") ||
-      lowerMsg.includes("matchday") ||
-      lowerMsg.includes("title race") ||
-      lowerMsg.includes("epl") ||
-      lowerMsg.includes("football")
-    ) {
-      return {
-        role: "assistant",
-        content: null,
-        tool_calls: [
-          {
-            id: "call_skill_matchday",
-            type: "function",
-            function: {
-              name: "use_skill",
-              arguments: JSON.stringify({ name: "matchday-briefing" }),
-            },
+        },
+      ],
+    };
+  }
+  if (
+    lowerMsg.includes("briefing") ||
+    lowerMsg.includes("matchday") ||
+    lowerMsg.includes("title race") ||
+    lowerMsg.includes("epl") ||
+    lowerMsg.includes("football")
+  ) {
+    return {
+      role: "assistant",
+      content: null,
+      tool_calls: [
+        {
+          id: "call_skill_matchday",
+          type: "function",
+          function: {
+            name: "use_skill",
+            arguments: JSON.stringify({ name: "matchday-briefing" }),
           },
-        ],
-      };
-    }
-    if (
-      lowerMsg.includes("travel") ||
-      lowerMsg.includes("planner") ||
-      lowerMsg.includes("packing") ||
-      lowerMsg.includes("weather")
-    ) {
-      return {
-        role: "assistant",
-        content: null,
-        tool_calls: [
-          {
-            id: "call_skill_travel",
-            type: "function",
-            function: {
-              name: "use_skill",
-              arguments: JSON.stringify({ name: "travel-weather-planner" }),
-            },
+        },
+      ],
+    };
+  }
+  if (
+    lowerMsg.includes("travel") ||
+    lowerMsg.includes("planner") ||
+    lowerMsg.includes("packing") ||
+    lowerMsg.includes("weather")
+  ) {
+    return {
+      role: "assistant",
+      content: null,
+      tool_calls: [
+        {
+          id: "call_skill_travel",
+          type: "function",
+          function: {
+            name: "use_skill",
+            arguments: JSON.stringify({ name: "travel-weather-planner" }),
           },
-        ],
-      };
-    }
+        },
+      ],
+    };
   }
 
-  // 2. Multi-step execution after loading a Skill
-  if (hasLoadedAnySkill) {
-    const lastSkill = loadedSkills[loadedSkills.length - 1];
-
-    if (lastSkill.includes("daily-standup")) {
-      if (hasListTaskResult) {
-        const lastToolRes = [...messages].reverse().find((m) => m.role === "tool" && m.name === "list_tasks");
-        return {
-          role: "assistant",
-          content: `### 🎤 Daily Standup Summary\n\n${lastToolRes?.content || "No tasks available."}\n\n**Plan for Today**: Focus on completing open items.`,
-        };
-      }
-      return {
-        role: "assistant",
-        content: null,
-        tool_calls: [
-          {
-            id: "call_list_tasks",
-            type: "function",
-            function: {
-              name: "list_tasks",
-              arguments: "{}",
-            },
-          },
-        ],
-      };
-    }
-
-    if (lastSkill.includes("matchday-briefing")) {
-      if (hasStandingsResult) {
-        const lastStandings = [...messages].reverse().find((m) => m.role === "tool" && m.name === "get_competition_standings");
-        return {
-          role: "assistant",
-          content: `### ⚽ Premier League Matchday Briefing & Title Race Breakdown\n\n${lastStandings?.content || ""}\n\n### 📝 Title Race Analysis:\n- **Arsenal & Liverpool** are level on 64 points, with Arsenal leading on goal difference (+45 vs +39).\n- **Manchester City** is just 1 point behind (63 pts), keeping the title race extremely tight!`,
-        };
-      }
-      return {
-        role: "assistant",
-        content: null,
-        tool_calls: [
-          {
-            id: "call_football_standings",
-            type: "function",
-            function: {
-              name: "get_competition_standings",
-              arguments: JSON.stringify({ competition: "PL" }),
-            },
-          },
-          {
-            id: "call_football_matches",
-            type: "function",
-            function: {
-              name: "get_recent_matches",
-              arguments: JSON.stringify({ competition: "PL" }),
-            },
-          },
-        ],
-      };
-    }
-
-    if (lastSkill.includes("travel-weather-planner")) {
-      if (hasWeatherResult) {
-        return {
-          role: "assistant",
-          content: "### 🌤️ Travel Weather Advisory — Saigon\n\n- **Current**: 32°C Partly Cloudy (AQI: 55 Good)\n- **3-Day Forecast**: Warm and sunny, light afternoon showers expected.\n- **Packing Recommendation**: Light cotton clothing, sunscreen, and a compact umbrella.",
-        };
-      }
-      return {
-        role: "assistant",
-        content: null,
-        tool_calls: [
-          {
-            id: "call_weather_1",
-            type: "function",
-            function: {
-              name: "get_current_weather",
-              arguments: JSON.stringify({ city: "Saigon" }),
-            },
-          },
-        ],
-      };
-    }
-  }
-
-  // 3. Direct Tool Calls if no skill matched
+  // 2. Direct Tool Calls
   if (lowerMsg.includes("task") || lowerMsg.includes("todo")) {
-    if (hasListTaskResult) {
-      const lastToolRes = [...messages].reverse().find((m) => m.role === "tool" && m.name === "list_tasks");
-      return {
-        role: "assistant",
-        content: `Here are your current tasks:\n\n${lastToolRes?.content || "No tasks found."}`,
-      };
-    }
     return {
       role: "assistant",
       content: null,
@@ -248,6 +206,6 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
 
   return {
     role: "assistant",
-    content: `I've processed your query for "${userText}". How else can I assist you with your tasks, weather, or football briefings?`,
+    content: `I've received your query for "${userText}". How else can I assist you with your tasks, weather, or football briefings?`,
   };
 }
