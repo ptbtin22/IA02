@@ -113,6 +113,31 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     }
 
     if (lastMsg.name === "list_tasks") {
+      // If user requested complete/done/delete, proceed to complete task 1
+      if (
+        lowerMsg.includes("complete") ||
+        lowerMsg.includes("done") ||
+        lowerMsg.includes("mark") ||
+        lowerMsg.includes("finish") ||
+        lowerMsg.includes("delete") ||
+        lowerMsg.includes("remove")
+      ) {
+        return {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "call_complete_task_from_list",
+              type: "function",
+              function: {
+                name: "complete_task",
+                arguments: JSON.stringify({ id: 1 }),
+              },
+            },
+          ],
+        };
+      }
+
       return {
         role: "assistant",
         content: `### 📋 Your Active Tasks\n\n${lastMsg.content}\n\nWhat would you like to work on next?`,
@@ -123,6 +148,13 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
       return {
         role: "assistant",
         content: `✅ ${lastMsg.content}\n\nTask added successfully to your list!`,
+      };
+    }
+
+    if (lastMsg.name === "complete_task") {
+      return {
+        role: "assistant",
+        content: `✅ ${lastMsg.content}\n\nTask marked as completed!`,
       };
     }
 
@@ -193,7 +225,34 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     };
   }
 
-  // 2. Direct Tool Calls (Add task vs List tasks)
+  // 2. Direct Task Completion Triggers
+  if (
+    lowerMsg.includes("done") ||
+    lowerMsg.includes("complete") ||
+    lowerMsg.includes("finish") ||
+    lowerMsg.includes("mark") ||
+    lowerMsg.includes("delete") ||
+    lowerMsg.includes("remove")
+  ) {
+    const numMatch = userText.match(/\d+/);
+    const taskId = numMatch ? parseInt(numMatch[0], 10) : 1;
+    return {
+      role: "assistant",
+      content: null,
+      tool_calls: [
+        {
+          id: "call_complete_task_direct",
+          type: "function",
+          function: {
+            name: "complete_task",
+            arguments: JSON.stringify({ id: taskId }),
+          },
+        },
+      ],
+    };
+  }
+
+  // 3. Direct Task Addition Triggers
   if (lowerMsg.includes("add") || lowerMsg.includes("create") || lowerMsg.includes("new task")) {
     const taskName = userText.replace(/please|add|task|todo|and|to|my|list/gi, "").trim() || "New Task";
     return {
@@ -212,6 +271,7 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     };
   }
 
+  // 4. Direct Task Listing Triggers
   if (lowerMsg.includes("task") || lowerMsg.includes("todo") || lowerMsg.includes("list")) {
     return {
       role: "assistant",
