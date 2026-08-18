@@ -71,7 +71,7 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
 
   const lastMsg = messages[messages.length - 1];
 
-  // 1. If previous turn returned tool execution results, synthesize final response
+  // 1. Multi-step skill execution handler
   if (lastMsg && lastMsg.role === "tool") {
     if (lastMsg.name === "use_skill") {
       const skillContent = lastMsg.content || "";
@@ -107,6 +107,69 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
           ],
         };
       }
+      if (skillContent.includes("travel-weather-planner")) {
+        return {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "call_weather_current",
+              type: "function",
+              function: {
+                name: "get_current_weather",
+                arguments: JSON.stringify({ city: "Saigon" }),
+              },
+            },
+          ],
+        };
+      }
+    }
+
+    if (lastMsg.name === "get_current_weather") {
+      if (loadedSkills.some((s) => s.includes("travel-weather-planner"))) {
+        return {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "call_weather_forecast",
+              type: "function",
+              function: {
+                name: "get_weather_forecast",
+                arguments: JSON.stringify({ city: "Saigon", days: 3 }),
+              },
+            },
+          ],
+        };
+      }
+      return {
+        role: "assistant",
+        content: `### 🌤️ Weather Report\n\n${lastMsg.content}`,
+      };
+    }
+
+    if (lastMsg.name === "get_weather_forecast") {
+      return {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: "call_air_quality",
+            type: "function",
+            function: {
+              name: "get_air_quality",
+              arguments: JSON.stringify({ city: "Saigon" }),
+            },
+          },
+        ],
+      };
+    }
+
+    if (lastMsg.name === "get_air_quality") {
+      return {
+        role: "assistant",
+        content: `### 🌤️ Travel Weather Advisory & Packing Guide — Saigon\n\n- 🌡️ **Current Weather**: 32°C Partly Cloudy (Feels like 35°C)\n- 📅 **3-Day Forecast**:\n  - Day 1: 26°C - 34°C (Sunny with afternoon showers)\n  - Day 2: 25°C - 33°C (Partly Cloudy)\n  - Day 3: 26°C - 34°C (Hot & Humid)\n- 😷 **Air Quality**: AQI 55 (Moderate / Acceptable)\n- 🧳 **Packing Checklist**: Light cotton clothes, sunglasses, sunscreen, and a compact umbrella for afternoon rain.`,
+      };
     }
 
     if (lastMsg.name === "get_competition_standings") {
@@ -124,15 +187,15 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
         const doneTasks = lines
           .filter((l) => l.includes("✅"))
           .map((l) => l.replace(/^\d+\s*✅\s*/, ""))
-          .join("\n- ") || "None";
+          .join("\n- ");
         const openTasks = lines
           .filter((l) => l.includes("⬜"))
           .map((l) => l.replace(/^\d+\s*⬜\s*/, ""))
-          .join("\n- ") || "None";
+          .join("\n- ");
 
         return {
           role: "assistant",
-          content: `### 🎤 Daily Standup Report\n\n**✅ Done**\n${doneTasks !== "None" ? `- ${doneTasks}` : "- None"}\n\n**⬜ Today**\n${openTasks !== "None" ? `- ${openTasks}` : "- None"}\n\n**🚫 Blockers**\n- None`,
+          content: `### 🎤 Daily Standup Report\n\n**✅ Done**\n${doneTasks ? `- ${doneTasks}` : "- None"}\n\n**⬜ Today**\n${openTasks ? `- ${openTasks}` : "- None"}\n\n**🚫 Blockers**\n- None`,
         };
       }
 
@@ -316,16 +379,16 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     };
   }
 
-  // 6. Intelligent Conversational Follow-up Responses
+  // 6. Conversational Reasoning Follow-ups
   if (lowerMsg.includes("who") || lowerMsg.includes("win") || lowerMsg.includes("predict") || lowerMsg.includes("favorite")) {
     return {
       role: "assistant",
-      content: "### 🏆 EPL Title Race Prediction\n\nBased on current standings:\n- **Arsenal (+45 GD)** and **Liverpool (+39 GD)** are tied on 64 points.\n- **Manchester City (63 pts)** is just 1 point behind with a proven track record in late-season title runs.\n\n**Prediction**: Manchester City remains a dangerous favorite due to squad depth, but Arsenal's superior Goal Difference makes them strong contenders if they maintain defensive consistency!",
+      content: "### 🏆 Title Race Reasoning & Prediction\n\nAnalyzing current competition dynamics:\n- **Arsenal (+45 GD)** & **Liverpool (+39 GD)** lead on 64 points.\n- **Manchester City (63 pts)** trails by just 1 point and possesses unmatched experience in high-pressure title run-ins.\n\n**Verdict**: While Arsenal's defensive record gives them a slight goal-difference cushion, Manchester City remains the favorite to clinch the title due to their squad depth in the final stretch!",
     };
   }
 
   return {
     role: "assistant",
-    content: `I'm ready to assist you! You can ask me to manage your tasks, analyze football standings and title races, or check weather forecasts across your MCP servers.`,
+    content: `I'm ready to assist you! Ask me to manage your tasks, analyze football standings and title races, or check weather forecasts across your MCP servers.`,
   };
 }
