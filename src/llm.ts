@@ -1,25 +1,56 @@
+import fs from "node:fs";
 import type { AdvertisedTool, ChatMessage } from "./types.js";
 
-const BASE_URL = process.env.OPENAI_BASE_URL || process.env.OLLAMA_HOST || "https://api.openai.com/v1";
-const API_KEY = process.env.OPENAI_API_KEY || "remote-agent-key";
-const MODEL_NAME = process.env.OPENAI_MODEL || process.env.OLLAMA_MODEL || "gpt-4o-mini";
+// Load .env file automatically if present and log warning on error
+if (fs.existsSync(".env")) {
+  try {
+    process.loadEnvFile(".env");
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.warn(`Warning: Failed to load .env file: ${errorMsg}`);
+  }
+}
 
 /**
- * Send chat completion request to Remote OpenAI-compatible LLM endpoint, with fallback executor.
+ * Get configured Remote LLM settings from environment variables strictly via LLM_*
+ */
+export function getLlmConfig() {
+  const rawBaseUrl = process.env.LLM_BASE_URL || "";
+  const apiKey = process.env.LLM_API_KEY || "";
+  const modelName = process.env.LLM_MODEL || "";
+
+  let baseUrl = rawBaseUrl.trim().replace(/\/$/, "");
+  if (baseUrl && !baseUrl.endsWith("/chat/completions")) {
+    baseUrl = `${baseUrl}/chat/completions`;
+  }
+
+  return { baseUrl, apiKey, modelName };
+}
+
+/**
+ * Send chat completion request to Remote LLM endpoint
  */
 export async function getChatCompletion(
   messages: ChatMessage[],
   tools: AdvertisedTool[]
 ): Promise<ChatMessage> {
+  const { baseUrl, apiKey, modelName } = getLlmConfig();
+
+  // Fallback if environment variables are not fully configured
+  if (!apiKey || !baseUrl || !modelName) {
+    console.error("⚠️ LLM configuration incomplete in environment variables (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL). Using mock fallback executor...");
+    return mockAgentDecision(messages);
+  }
+
   try {
-    const res = await fetch(`${BASE_URL.replace(/\/$/, "")}/chat/completions`, {
+    const res = await fetch(baseUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: MODEL_NAME,
+        model: modelName,
         messages,
         tools: tools.length > 0 ? tools : undefined,
         stream: false,
@@ -27,7 +58,7 @@ export async function getChatCompletion(
     });
 
     if (!res.ok) {
-      throw new Error(`Remote LLM API error ${res.status}: ${await res.text()}`);
+      throw new Error(`LLM API error ${res.status}: ${await res.text()}`);
     }
 
     const data = (await res.json()) as { choices: Array<{ message: ChatMessage }> };
@@ -47,9 +78,18 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
   const lowerMsg = lastUserMsg.toLowerCase();
 
   const hasSkillResult = messages.some((m) => m.role === "tool" && m.name === "use_skill");
-  const hasListResult = messages.some(
-    (m) => m.role === "tool" && (m.name === "list_tasks" || m.name === "list_notes")
-  );
+  const hasListTaskResult = messages.some((m) => m.role === "tool" && m.name === "list_tasks");
+  const hasListNotesResult = messages.some((m) => m.role === "tool" && m.name === "list_notes");
+  const hasSaveNoteResult = messages.some((m) => m.role === "tool" && m.name === "save_note");
+
+  // If a tool was just executed in the previous step, stop the loop and answer the user!
+  const lastMsg = messages[messages.length - 1];
+  if (lastMsg && lastMsg.role === "tool") {
+    return {
+      role: "assistant",
+      content: `### LLM Agent Response\n\nHere are the results:\n${lastMsg.content}`,
+    };
+  }
 
   // 1. Skill Trigger
   if (!hasSkillResult && (lowerMsg.includes("standup") || lowerMsg.includes("today"))) {
@@ -70,7 +110,7 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
   }
 
   // 2. Skill follow up call list_tasks
-  if (hasSkillResult && !hasListResult) {
+  if (hasSkillResult && !hasListTaskResult) {
     return {
       role: "assistant",
       content: null,
@@ -87,8 +127,26 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     };
   }
 
-  // 3. Notes saving trigger
-  if (lowerMsg.includes("note") || lowerMsg.includes("save")) {
+  // 3. Notes listing trigger ("what notes", "list notes")
+  if (!hasListNotesResult && (lowerMsg.includes("what note") || lowerMsg.includes("list note") || lowerMsg.includes("show note"))) {
+    return {
+      role: "assistant",
+      content: null,
+      tool_calls: [
+        {
+          id: "call_list_notes_1",
+          type: "function",
+          function: {
+            name: "list_notes",
+            arguments: "{}",
+          },
+        },
+      ],
+    };
+  }
+
+  // 4. Notes saving trigger
+  if (!hasSaveNoteResult && (lowerMsg.includes("save note") || lowerMsg.includes("add note"))) {
     return {
       role: "assistant",
       content: null,
@@ -98,14 +156,14 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
           type: "function",
           function: {
             name: "save_note",
-            arguments: JSON.stringify({ title: "Project Meeting", content: "Discussed 3 distinct MCP servers." }),
+            arguments: JSON.stringify({ title: "Project Meeting", content: "Discussed FIT LLM service integration." }),
           },
         },
       ],
     };
   }
 
-  // 4. System expression trigger
+  // 5. System expression trigger
   if (lowerMsg.includes("calculate") || lowerMsg.includes("*") || lowerMsg.includes("+")) {
     return {
       role: "assistant",
@@ -123,10 +181,9 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     };
   }
 
-  // 5. Final Answer
-  const lastToolRes = [...messages].reverse().find((m) => m.role === "tool")?.content || "No items.";
+  // 6. Final Default Answer
   return {
     role: "assistant",
-    content: `### Agent Response\n\nExecuted request successfully.\n\n**Tool Output**:\n${lastToolRes}`,
+    content: "I have processed your request.",
   };
 }
