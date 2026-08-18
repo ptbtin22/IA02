@@ -65,6 +65,11 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
   const userText = lastUserMsg?.content || "";
   const lowerMsg = userText.toLowerCase();
 
+  const loadedSkills = messages
+    .filter((m) => m.role === "tool" && m.name === "use_skill")
+    .map((m) => m.content || "");
+  const hasLoadedAnySkill = loadedSkills.length > 0;
+
   const lastMsg = messages[messages.length - 1];
 
   // If previous turn returned tool execution results, synthesize final response
@@ -113,7 +118,26 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     }
 
     if (lastMsg.name === "list_tasks") {
-      // If user requested complete/done/delete, proceed to complete task 1
+      // Check if daily-standup skill was activated
+      if (loadedSkills.some((s) => s.includes("daily-standup"))) {
+        const rawContent = lastMsg.content || "";
+        const lines = rawContent.split("\n").filter(Boolean);
+        const doneTasks = lines
+          .filter((l) => l.includes("✅"))
+          .map((l) => l.replace(/^\d+\s*✅\s*/, ""))
+          .join("\n- ") || "None";
+        const openTasks = lines
+          .filter((l) => l.includes("⬜"))
+          .map((l) => l.replace(/^\d+\s*⬜\s*/, ""))
+          .join("\n- ") || "None";
+
+        return {
+          role: "assistant",
+          content: `### 🎤 Daily Standup Report\n\n**✅ Done**\n- ${doneTasks}\n\n**⬜ Today**\n- ${openTasks}\n\n**🚫 Blockers**\n- None`,
+        };
+      }
+
+      // If user requested complete/done/delete, proceed to complete task
       if (
         lowerMsg.includes("complete") ||
         lowerMsg.includes("done") ||
@@ -122,6 +146,7 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
         lowerMsg.includes("delete") ||
         lowerMsg.includes("remove")
       ) {
+        const targetId = lowerMsg.includes("laundry") || lowerMsg.includes("2") || lowerMsg.includes("second") ? 2 : 1;
         return {
           role: "assistant",
           content: null,
@@ -131,7 +156,7 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
               type: "function",
               function: {
                 name: "complete_task",
-                arguments: JSON.stringify({ id: 1 }),
+                arguments: JSON.stringify({ id: targetId }),
               },
             },
           ],
@@ -235,7 +260,10 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     lowerMsg.includes("remove")
   ) {
     const numMatch = userText.match(/\d+/);
-    const taskId = numMatch ? parseInt(numMatch[0], 10) : 1;
+    let taskId = numMatch ? parseInt(numMatch[0], 10) : 1;
+    if (!numMatch && (lowerMsg.includes("laundry") || lowerMsg.includes("second") || lowerMsg.includes("2"))) {
+      taskId = 2;
+    }
     return {
       role: "assistant",
       content: null,
