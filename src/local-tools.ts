@@ -36,7 +36,7 @@ export const ia01LocalTools: AdvertisedTool[] = [
     type: "function",
     function: {
       name: "read_file",
-      description: "Read a file from disk",
+      description: "Read a source code file from disk",
       parameters: {
         type: "object",
         properties: {
@@ -80,7 +80,7 @@ export const ia01LocalTools: AdvertisedTool[] = [
     type: "function",
     function: {
       name: "list_files",
-      description: "List files and directories in a directory path",
+      description: "List repository source code files in a directory path (do NOT use for user todo tasks)",
       parameters: {
         type: "object",
         properties: {
@@ -108,7 +108,7 @@ export const ia01LocalTools: AdvertisedTool[] = [
     type: "function",
     function: {
       name: "delete_file",
-      description: "Delete a file (requires user approval)",
+      description: "Delete a file from disk with user confirmation",
       parameters: {
         type: "object",
         properties: {
@@ -122,71 +122,102 @@ export const ia01LocalTools: AdvertisedTool[] = [
     type: "function",
     function: {
       name: "run_command",
-      description: "Run a shell command (requires user approval)",
+      description: "Execute a shell command with user confirmation prompt",
       parameters: {
         type: "object",
         properties: {
-          cmd: { type: "string", description: "The shell command to execute" },
+          command: { type: "string", description: "The shell command to execute" },
         },
-        required: ["cmd"],
+        required: ["command"],
       },
     },
   },
 ];
 
 /**
- * Execute IA01 local tools with human approval for dangerous operations
+ * Interactive execution of IA01 Local File & Shell Command Tools
  */
 export async function executeLocalTool(
-  name: string,
+  toolName: string,
   args: Record<string, unknown>,
   rl?: readline.Interface
 ): Promise<string> {
   await ensureWorkspace();
 
-  if (name === "run_command") {
-    const cmd = String(args.cmd || "");
-    if (rl) {
-      const approval = await rl.question(`⚠️ Approve running shell command: "${cmd}"? (y/N): `);
-      if (!["y", "yes"].includes(approval.trim().toLowerCase())) {
-        return "Error: Command execution rejected by user.";
-      }
+  switch (toolName) {
+    case "read_file": {
+      const relPath = String(args.path || "");
+      const fullPath = safePath(relPath);
+      return await fs.readFile(fullPath, "utf8");
     }
-    return execSync(cmd).toString();
-  }
 
-  if (name === "delete_file") {
-    const filePath = String(args.path || "");
-    if (rl) {
-      const approval = await rl.question(`⚠️ Approve deleting file: "${filePath}"? (y/N): `);
-      if (!["y", "yes"].includes(approval.trim().toLowerCase())) {
-        return "Error: File deletion rejected by user.";
-      }
+    case "write_file": {
+      const relPath = String(args.path || "");
+      const content = String(args.content || "");
+      const fullPath = safePath(relPath);
+      await fs.writeFile(fullPath, content, "utf8");
+      return `File '${relPath}' written successfully (${content.length} bytes).`;
     }
-    await fs.unlink(safePath(filePath));
-    return "File deleted successfully";
-  }
 
-  switch (name) {
-    case "read_file":
-      return await fs.readFile(safePath(String(args.path || "")), "utf8");
-
-    case "write_file":
-    case "edit_file":
-      await fs.writeFile(safePath(String(args.path || "")), String(args.content || ""));
-      return "File written successfully";
+    case "edit_file": {
+      const relPath = String(args.path || "");
+      const content = String(args.content || "");
+      const fullPath = safePath(relPath);
+      await fs.writeFile(fullPath, content, "utf8");
+      return `File '${relPath}' updated successfully.`;
+    }
 
     case "list_files": {
-      const targetPath = String(args.path || "./");
-      const files = await fs.readdir(safePath(targetPath), { withFileTypes: true });
-      return files.map((f) => `${f.isDirectory() ? "[DIR]" : "[FILE]"} ${f.name}`).join("\n");
+      const relPath = String(args.path || ".");
+      const fullPath = safePath(relPath);
+      const entries = await fs.readdir(fullPath, { withFileTypes: true });
+      return entries.map((e) => `${e.isDirectory() ? "[DIR]" : "[FILE]"} ${e.name}`).join(" ");
     }
 
-    case "create_dir":
-      await fs.mkdir(safePath(String(args.path || "")), { recursive: true });
-      return "Directory created successfully";
+    case "create_dir": {
+      const relPath = String(args.path || "");
+      const fullPath = safePath(relPath);
+      await fs.mkdir(fullPath, { recursive: true });
+      return `Directory '${relPath}' created successfully.`;
+    }
+
+    case "delete_file": {
+      const relPath = String(args.path || "");
+      const fullPath = safePath(relPath);
+
+      // Interactive user approval prompt
+      if (rl) {
+        const answer = await rl.question(`\n⚠️ DANGER: Delete file '${relPath}'? (y/N): `);
+        if (answer.trim().toLowerCase() !== "y") {
+          return `Operation cancelled by user. File '${relPath}' was NOT deleted.`;
+        }
+      }
+
+      await fs.unlink(fullPath);
+      return `File '${relPath}' deleted successfully.`;
+    }
+
+    case "run_command": {
+      const cmd = String(args.command || "");
+
+      // Interactive user approval prompt
+      if (rl) {
+        const answer = await rl.question(`\n⚠️ SECURITY: Approve running command: '${cmd}'? (y/N): `);
+        if (answer.trim().toLowerCase() !== "y") {
+          return `Command execution cancelled by user: '${cmd}'`;
+        }
+      }
+
+      try {
+        const output = execSync(cmd, { cwd: WORKSPACE_DIR, encoding: "utf8", timeout: 15000 });
+        return output.trim() || "(Command executed cleanly with no output)";
+      } catch (err: unknown) {
+        const execErr = err as { stdout?: string; stderr?: string; message: string };
+        return `Command failed: ${execErr.stderr || execErr.stdout || execErr.message}`;
+      }
+    }
 
     default:
-      throw new Error(`Unknown local tool: ${name}`);
+      throw new Error(`Unknown local tool: ${toolName}`);
   }
 }

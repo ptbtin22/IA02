@@ -9,18 +9,24 @@ const SESSION_FILE = "./session.json";
 export async function loadSession(systemPrompt: string): Promise<ChatMessage[]> {
   try {
     const data = await fs.readFile(SESSION_FILE, "utf8");
-    return JSON.parse(data);
+    const parsed = JSON.parse(data) as ChatMessage[];
+    // Ensure system prompt is up to date
+    if (parsed.length > 0 && parsed[0].role === "system") {
+      parsed[0].content = systemPrompt;
+    }
+    return parsed;
   } catch (e) {
     return [{ role: "system", content: systemPrompt }];
   }
 }
 
 /**
- * Save current session history to disk
+ * Save current session history to disk, keeping capped at max 20 recent messages
  */
 export async function saveSession(messages: ChatMessage[]): Promise<void> {
   try {
-    await fs.writeFile(SESSION_FILE, JSON.stringify(messages, null, 2), "utf8");
+    const pruned = pruneMessages(messages, 20);
+    await fs.writeFile(SESSION_FILE, JSON.stringify(pruned, null, 2), "utf8");
   } catch (e) {
     console.error("Failed to save session:", e);
   }
