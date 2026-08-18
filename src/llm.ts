@@ -119,6 +119,13 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
       };
     }
 
+    if (lastMsg.name === "add_task") {
+      return {
+        role: "assistant",
+        content: `✅ ${lastMsg.content}\n\nTask added successfully to your list!`,
+      };
+    }
+
     return {
       role: "assistant",
       content: `I've retrieved the requested data:\n\n${lastMsg.content}`,
@@ -186,8 +193,26 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     };
   }
 
-  // 2. Direct Tool Calls
-  if (lowerMsg.includes("task") || lowerMsg.includes("todo")) {
+  // 2. Direct Tool Calls (Add task vs List tasks)
+  if (lowerMsg.includes("add") || lowerMsg.includes("create") || lowerMsg.includes("new task")) {
+    const taskName = userText.replace(/please|add|task|todo|and|to|my|list/gi, "").trim() || "New Task";
+    return {
+      role: "assistant",
+      content: null,
+      tool_calls: [
+        {
+          id: "call_add_task_direct",
+          type: "function",
+          function: {
+            name: "add_task",
+            arguments: JSON.stringify({ text: taskName }),
+          },
+        },
+      ],
+    };
+  }
+
+  if (lowerMsg.includes("task") || lowerMsg.includes("todo") || lowerMsg.includes("list")) {
     return {
       role: "assistant",
       content: null,
