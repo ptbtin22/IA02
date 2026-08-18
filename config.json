@@ -5,10 +5,7 @@
       "args": ["tsx", "notes-server.ts"]
     },
     "football-http-local": {
-      "url": "http://localhost:3000/mcp",
-      "headers": {
-        "Authorization": "Bearer ${MCP_KEY}"
-      }
+      "url": "http://localhost:3000/mcp"
     },
     "todo-http-public": {
       "url": "https://todo-mcp-http.onrender.com/mcp",
