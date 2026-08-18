@@ -7,7 +7,6 @@ export async function getChatCompletion(
   messages: ChatMessage[],
   tools?: AdvertisedTool[]
 ): Promise<ChatMessage> {
-  // Read environment variables dynamically at function call time (after process.loadEnvFile has run)
   const apiKey = process.env.LLM_API_KEY || "";
   const baseUrl = process.env.LLM_BASE_URL || "";
   const model = process.env.LLM_MODEL || "";
@@ -80,202 +79,120 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
 
   const lastMsg = messages[messages.length - 1];
 
-  // 1. Multi-step skill execution handler
+  // 1. Synthesize output if previous message was a tool result
   if (lastMsg && lastMsg.role === "tool") {
-    if (lastMsg.name === "use_skill") {
-      const skillContent = lastMsg.content || "";
-      if (skillContent.includes("matchday-briefing")) {
-        return {
-          role: "assistant",
-          content: null,
-          tool_calls: [
-            {
-              id: "call_football_standings",
-              type: "function",
-              function: {
-                name: "get_competition_standings",
-                arguments: JSON.stringify({ competition: "PL" }),
-              },
-            },
-          ],
-        };
-      }
-      if (skillContent.includes("daily-standup")) {
-        return {
-          role: "assistant",
-          content: null,
-          tool_calls: [
-            {
-              id: "call_list_tasks",
-              type: "function",
-              function: {
-                name: "list_tasks",
-                arguments: "{}",
-              },
-            },
-          ],
-        };
-      }
-      if (skillContent.includes("travel-weather-planner")) {
-        return {
-          role: "assistant",
-          content: null,
-          tool_calls: [
-            {
-              id: "call_weather_current",
-              type: "function",
-              function: {
-                name: "get_current_weather",
-                arguments: JSON.stringify({ city: "Saigon" }),
-              },
-            },
-          ],
-        };
-      }
+    return synthesizeToolResult(lastMsg, loadedSkills, lowerMsg);
+  }
+
+  // 2. Direct intent triggers (Skills, Tasks, Predictions)
+  return routeUserIntent(lowerMsg, userText);
+}
+
+/**
+ * Handle multi-turn tool result synthesis in Fallback Mode
+ */
+function synthesizeToolResult(
+  lastMsg: ChatMessage,
+  loadedSkills: string[],
+  lowerMsg: string
+): ChatMessage {
+  // A. Skill Tool Activation Response
+  if (lastMsg.name === "use_skill") {
+    const skillContent = lastMsg.content || "";
+    if (skillContent.includes("matchday-briefing")) {
+      return createToolCallMsg("call_football_standings", "get_competition_standings", { competition: "PL" });
     }
-
-    if (lastMsg.name === "get_current_weather") {
-      if (loadedSkills.some((s) => s.includes("travel-weather-planner"))) {
-        return {
-          role: "assistant",
-          content: null,
-          tool_calls: [
-            {
-              id: "call_weather_forecast",
-              type: "function",
-              function: {
-                name: "get_weather_forecast",
-                arguments: JSON.stringify({ city: "Saigon", days: 3 }),
-              },
-            },
-          ],
-        };
-      }
-      return {
-        role: "assistant",
-        content: `### 🌤️ Weather Report\n\n${lastMsg.content}`,
-      };
+    if (skillContent.includes("daily-standup")) {
+      return createToolCallMsg("call_list_tasks", "list_tasks", {});
     }
-
-    if (lastMsg.name === "get_weather_forecast") {
-      return {
-        role: "assistant",
-        content: null,
-        tool_calls: [
-          {
-            id: "call_air_quality",
-            type: "function",
-            function: {
-              name: "get_air_quality",
-              arguments: JSON.stringify({ city: "Saigon" }),
-            },
-          },
-        ],
-      };
+    if (skillContent.includes("travel-weather-planner")) {
+      return createToolCallMsg("call_weather_current", "get_current_weather", { city: "Saigon" });
     }
+  }
 
-    if (lastMsg.name === "get_air_quality") {
-      return {
-        role: "assistant",
-        content: `### 🌤️ Travel Weather Advisory & Packing Guide — Saigon\n\n- 🌡️ **Current Weather**: 32°C Partly Cloudy (Feels like 35°C)\n- 📅 **3-Day Forecast**:\n  - Day 1: 26°C - 34°C (Sunny with afternoon showers)\n  - Day 2: 25°C - 33°C (Partly Cloudy)\n  - Day 3: 26°C - 34°C (Hot & Humid)\n- 😷 **Air Quality**: AQI 55 (Moderate / Acceptable)\n- 🧳 **Packing Checklist**: Light cotton clothes, sunglasses, sunscreen, and a compact umbrella for afternoon rain.`,
-      };
+  // B. Weather Skill Pipeline
+  if (lastMsg.name === "get_current_weather") {
+    if (loadedSkills.some((s) => s.includes("travel-weather-planner"))) {
+      return createToolCallMsg("call_weather_forecast", "get_weather_forecast", { city: "Saigon", days: 3 });
     }
+    return { role: "assistant", content: `### 🌤️ Weather Report\n\n${lastMsg.content}` };
+  }
 
-    if (lastMsg.name === "get_competition_standings") {
-      return {
-        role: "assistant",
-        content: `### ⚽ Premier League Matchday Briefing & Title Race Breakdown\n\n${lastMsg.content}\n\n### 📝 Title Race Analysis:\n- **Arsenal & Liverpool** are level on 64 points, with Arsenal leading on goal difference (+45 vs +39).\n- **Manchester City** is just 1 point behind (63 pts), keeping the title race extremely tight!`,
-      };
-    }
+  if (lastMsg.name === "get_weather_forecast") {
+    return createToolCallMsg("call_air_quality", "get_air_quality", { city: "Saigon" });
+  }
 
-    if (lastMsg.name === "list_tasks") {
-      // Check if daily-standup skill was activated
-      if (loadedSkills.some((s) => s.includes("daily-standup"))) {
-        const rawContent = lastMsg.content || "";
-        const lines = rawContent.split("\n").filter(Boolean);
-        const doneTasks = lines
-          .filter((l) => l.includes("✅"))
-          .map((l) => l.replace(/^\d+\s*✅\s*/, ""))
-          .join("\n- ");
-        const openTasks = lines
-          .filter((l) => l.includes("⬜"))
-          .map((l) => l.replace(/^\d+\s*⬜\s*/, ""))
-          .join("\n- ");
-
-        return {
-          role: "assistant",
-          content: `### 🎤 Daily Standup Report\n\n**✅ Done**\n${doneTasks ? `- ${doneTasks}` : "- None"}\n\n**⬜ Today**\n${openTasks ? `- ${openTasks}` : "- None"}\n\n**🚫 Blockers**\n- None`,
-        };
-      }
-
-      // If user requested complete/done/delete, proceed to complete task
-      if (
-        lowerMsg.includes("complete") ||
-        lowerMsg.includes("done") ||
-        lowerMsg.includes("mark") ||
-        lowerMsg.includes("finish") ||
-        lowerMsg.includes("delete") ||
-        lowerMsg.includes("remove")
-      ) {
-        const targetId = lowerMsg.includes("laundry") || lowerMsg.includes("2") || lowerMsg.includes("second") ? 2 : 1;
-        return {
-          role: "assistant",
-          content: null,
-          tool_calls: [
-            {
-              id: "call_complete_task_from_list",
-              type: "function",
-              function: {
-                name: "complete_task",
-                arguments: JSON.stringify({ id: targetId }),
-              },
-            },
-          ],
-        };
-      }
-
-      return {
-        role: "assistant",
-        content: `### 📋 Your Active Tasks\n\n${lastMsg.content}\n\nWhat would you like to work on next?`,
-      };
-    }
-
-    if (lastMsg.name === "add_task") {
-      return {
-        role: "assistant",
-        content: `✅ ${lastMsg.content}\n\nTask added successfully to your list!`,
-      };
-    }
-
-    if (lastMsg.name === "complete_task") {
-      return {
-        role: "assistant",
-        content: `✅ ${lastMsg.content}\n\nTask marked as completed!`,
-      };
-    }
-
+  if (lastMsg.name === "get_air_quality") {
     return {
       role: "assistant",
-      content: `I've retrieved the requested data:\n\n${lastMsg.content}`,
+      content: `### 🌤️ Travel Weather Advisory & Packing Guide — Saigon\n\n- 🌡️ **Current Weather**: 32°C Partly Cloudy (Feels like 35°C)\n- 📅 **3-Day Forecast**:\n  - Day 1: 26°C - 34°C (Sunny with afternoon showers)\n  - Day 2: 25°C - 33°C (Partly Cloudy)\n  - Day 3: 26°C - 34°C (Hot & Humid)\n- 😷 **Air Quality**: AQI 55 (Moderate / Acceptable)\n- 🧳 **Packing Checklist**: Light cotton clothes, sunglasses, sunscreen, and a compact umbrella for afternoon rain.`,
     };
   }
 
-  // 2. Skill Triggers (Calls use_skill FIRST)
-  if (lowerMsg.includes("standup") || lowerMsg.includes("today") || lowerMsg.includes("plan")) {
+  // C. Football Briefing Response
+  if (lastMsg.name === "get_competition_standings") {
     return {
       role: "assistant",
-      content: null,
-      tool_calls: [
-        {
-          id: "call_skill_standup",
-          type: "function",
-          function: {
-            name: "use_skill",
-            arguments: JSON.stringify({ name: "daily-standup" }),
-          },
-        },
-      ],
+      content: `### ⚽ Premier League Matchday Briefing & Title Race Breakdown\n\n${lastMsg.content}\n\n### 📝 Title Race Analysis:\n- **Arsenal & Liverpool** are level on 64 points, with Arsenal leading on goal difference (+45 vs +39).\n- **Manchester City** is just 1 point behind (63 pts), keeping the title race extremely tight!`,
     };
+  }
+
+  // D. Task List & Task Operation Responses
+  if (lastMsg.name === "list_tasks") {
+    if (loadedSkills.some((s) => s.includes("daily-standup"))) {
+      const rawContent = lastMsg.content || "";
+      const lines = rawContent.split("\n").filter(Boolean);
+      const doneTasks = lines
+        .filter((l) => l.includes("✅"))
+        .map((l) => l.replace(/^\d+\s*✅\s*/, ""))
+        .join("\n- ");
+      const openTasks = lines
+        .filter((l) => l.includes("⬜"))
+        .map((l) => l.replace(/^\d+\s*⬜\s*/, ""))
+        .join("\n- ");
+
+      return {
+        role: "assistant",
+        content: `### 🎤 Daily Standup Report\n\n**✅ Done**\n${doneTasks ? `- ${doneTasks}` : "- None"}\n\n**⬜ Today**\n${openTasks ? `- ${openTasks}` : "- None"}\n\n**🚫 Blockers**\n- None`,
+      };
+    }
+
+    if (
+      lowerMsg.includes("complete") ||
+      lowerMsg.includes("done") ||
+      lowerMsg.includes("mark") ||
+      lowerMsg.includes("finish") ||
+      lowerMsg.includes("delete") ||
+      lowerMsg.includes("remove")
+    ) {
+      const targetId = lowerMsg.includes("laundry") || lowerMsg.includes("2") || lowerMsg.includes("second") ? 2 : 1;
+      return createToolCallMsg("call_complete_task_from_list", "complete_task", { id: targetId });
+    }
+
+    return {
+      role: "assistant",
+      content: `### 📋 Your Active Tasks\n\n${lastMsg.content}\n\nWhat would you like to work on next?`,
+    };
+  }
+
+  if (lastMsg.name === "add_task") {
+    return { role: "assistant", content: `✅ ${lastMsg.content}\n\nTask added successfully to your list!` };
+  }
+
+  if (lastMsg.name === "complete_task") {
+    return { role: "assistant", content: `✅ ${lastMsg.content}\n\nTask marked as completed!` };
+  }
+
+  return { role: "assistant", content: `I've retrieved the requested data:\n\n${lastMsg.content}` };
+}
+
+/**
+ * Route direct user query to appropriate skill or tool in Fallback Mode
+ */
+function routeUserIntent(lowerMsg: string, userText: string): ChatMessage {
+  // 1. Skill Triggers
+  if (lowerMsg.includes("standup") || lowerMsg.includes("today") || lowerMsg.includes("plan")) {
+    return createToolCallMsg("call_skill_standup", "use_skill", { name: "daily-standup" });
   }
   if (
     lowerMsg.includes("briefing") ||
@@ -284,20 +201,7 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     lowerMsg.includes("epl") ||
     lowerMsg.includes("football")
   ) {
-    return {
-      role: "assistant",
-      content: null,
-      tool_calls: [
-        {
-          id: "call_skill_matchday",
-          type: "function",
-          function: {
-            name: "use_skill",
-            arguments: JSON.stringify({ name: "matchday-briefing" }),
-          },
-        },
-      ],
-    };
+    return createToolCallMsg("call_skill_matchday", "use_skill", { name: "matchday-briefing" });
   }
   if (
     lowerMsg.includes("travel") ||
@@ -305,23 +209,10 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     lowerMsg.includes("packing") ||
     lowerMsg.includes("weather")
   ) {
-    return {
-      role: "assistant",
-      content: null,
-      tool_calls: [
-        {
-          id: "call_skill_travel",
-          type: "function",
-          function: {
-            name: "use_skill",
-            arguments: JSON.stringify({ name: "travel-weather-planner" }),
-          },
-        },
-      ],
-    };
+    return createToolCallMsg("call_skill_travel", "use_skill", { name: "travel-weather-planner" });
   }
 
-  // 3. Direct Task Completion Triggers
+  // 2. Direct Task Completion Triggers
   if (
     lowerMsg.includes("done") ||
     lowerMsg.includes("complete") ||
@@ -335,60 +226,21 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     if (!numMatch && (lowerMsg.includes("laundry") || lowerMsg.includes("second") || lowerMsg.includes("2"))) {
       taskId = 2;
     }
-    return {
-      role: "assistant",
-      content: null,
-      tool_calls: [
-        {
-          id: "call_complete_task_direct",
-          type: "function",
-          function: {
-            name: "complete_task",
-            arguments: JSON.stringify({ id: taskId }),
-          },
-        },
-      ],
-    };
+    return createToolCallMsg("call_complete_task_direct", "complete_task", { id: taskId });
   }
 
-  // 4. Direct Task Addition Triggers
+  // 3. Direct Task Addition Triggers
   if (lowerMsg.includes("add") || lowerMsg.includes("create") || lowerMsg.includes("new task")) {
     const taskName = userText.replace(/please|add|task|todo|and|to|my|list/gi, "").trim() || "New Task";
-    return {
-      role: "assistant",
-      content: null,
-      tool_calls: [
-        {
-          id: "call_add_task_direct",
-          type: "function",
-          function: {
-            name: "add_task",
-            arguments: JSON.stringify({ text: taskName }),
-          },
-        },
-      ],
-    };
+    return createToolCallMsg("call_add_task_direct", "add_task", { text: taskName });
   }
 
-  // 5. Direct Task Listing Triggers
+  // 4. Direct Task Listing Triggers
   if (lowerMsg.includes("task") || lowerMsg.includes("todo") || lowerMsg.includes("list")) {
-    return {
-      role: "assistant",
-      content: null,
-      tool_calls: [
-        {
-          id: "call_list_tasks_direct",
-          type: "function",
-          function: {
-            name: "list_tasks",
-            arguments: "{}",
-          },
-        },
-      ],
-    };
+    return createToolCallMsg("call_list_tasks_direct", "list_tasks", {});
   }
 
-  // 6. Conversational Reasoning Follow-ups
+  // 5. Conversational Reasoning Follow-ups
   if (lowerMsg.includes("who") || lowerMsg.includes("win") || lowerMsg.includes("predict") || lowerMsg.includes("favorite")) {
     return {
       role: "assistant",
@@ -399,5 +251,25 @@ function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
   return {
     role: "assistant",
     content: `I'm ready to assist you! Ask me to manage your tasks, analyze football standings and title races, or check weather forecasts across your MCP servers.`,
+  };
+}
+
+/**
+ * Helper to construct assistant tool call response message
+ */
+function createToolCallMsg(callId: string, fnName: string, args: Record<string, unknown>): ChatMessage {
+  return {
+    role: "assistant",
+    content: null,
+    tool_calls: [
+      {
+        id: callId,
+        type: "function",
+        function: {
+          name: fnName,
+          arguments: JSON.stringify(args),
+        },
+      },
+    ],
   };
 }
