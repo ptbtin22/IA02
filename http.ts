@@ -7,12 +7,15 @@ import { bearerAuthGuard, getApiKey } from "./src/middleware/auth.js";
 const app = express();
 app.use(express.json());
 
-// 1. Bearer Token Auth Guard on /mcp (If MCP_KEY is set, e.g. on Render)
+// 1. Singleton Todo Server Instance (Persistent task state)
+const todoServer = createTodoServer();
+
+// 2. Bearer Token Auth Guard on /mcp (If MCP_KEY is set in environment)
 if (process.env.MCP_KEY) {
   app.use("/mcp", bearerAuthGuard);
 }
 
-// 2. MCP Streamable HTTP Route (Serving Todo Task Management Server)
+// 3. MCP Streamable HTTP Route
 app.post("/mcp", async (req: Request, res: Response) => {
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined, // Stateless mode
@@ -22,15 +25,14 @@ app.post("/mcp", async (req: Request, res: Response) => {
     transport.close();
   });
 
-  const server = createTodoServer();
-  await server.connect(transport);
+  await todoServer.connect(transport);
   await transport.handleRequest(req, res, req.body);
 });
 
-// 3. Parallel Todo REST API Router
+// 4. Parallel Todo REST API Router
 app.use("/api", restRouter);
 
-// 4. Health Check Endpoint
+// 5. Health Check Endpoint
 app.get("/health", (_req: Request, res: Response) => {
   res.json({ status: "alive", timestamp: new Date().toISOString() });
 });
