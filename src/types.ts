@@ -1,5 +1,5 @@
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import type { Tool as McpTool } from "@modelcontextprotocol/sdk/types.js";
+import type { Tool as McpTool, Resource as McpResource, Prompt as McpPrompt } from "@modelcontextprotocol/sdk/types.js";
 
 /**
  * Task item data structure
@@ -73,9 +73,11 @@ export interface AdvertisedTool {
 }
 
 /**
- * Loaded MCP clients map and tool list
+ * Loaded MCP clients map and tool, resource, prompt lists
  */
 export interface LoadedMcpClients {
   clientsMap: Map<string, Client>;
   allMcpTools: McpTool[];
+  allMcpResources: McpResource[];
+  allMcpPrompts: McpPrompt[];
 }

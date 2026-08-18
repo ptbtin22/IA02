@@ -96,7 +96,7 @@ async function runQueryLoop(
  */
 async function main(): Promise<void> {
   const skills = loadSkillsIndex();
-  const { clientsMap, allMcpTools } = await loadMcpClients();
+  const { clientsMap, allMcpTools, allMcpResources, allMcpPrompts } = await loadMcpClients();
 
   // Local tool: use_skill
   const skillTools: AdvertisedTool[] = [
@@ -131,9 +131,19 @@ async function main(): Promise<void> {
   ];
 
   const skillsListStr = skills.map((s) => `- ${s.name}: ${s.description}`).join("\n");
+  const resourcesListStr = allMcpResources.map((r) => `- ${r.uri} (${r.name}): ${r.description || ""}`).join("\n");
+  const promptsListStr = allMcpPrompts.map((p) => `- ${p.name}: ${p.description || ""}`).join("\n");
+
   const systemPrompt = `You are an AI coding and task management agent built on IA01 + IA02 MCP Host architecture.
-Available skills:
+
+Available Skills:
 ${skillsListStr || "(No skills found)"}
+
+Available MCP Resources:
+${resourcesListStr || "(No resources found)"}
+
+Available MCP Prompts:
+${promptsListStr || "(No prompts found)"}
 
 If a user request matches a skill, call use_skill FIRST, then follow its steps.`;
 

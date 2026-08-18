@@ -80,7 +80,6 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
   const hasSkillResult = messages.some((m) => m.role === "tool" && m.name === "use_skill");
   const hasListTaskResult = messages.some((m) => m.role === "tool" && m.name === "list_tasks");
   const hasListNotesResult = messages.some((m) => m.role === "tool" && m.name === "list_notes");
-  const hasSaveNoteResult = messages.some((m) => m.role === "tool" && m.name === "save_note");
 
   // If a tool was just executed in the previous step, stop the loop and answer the user!
   const lastMsg = messages[messages.length - 1];
@@ -109,14 +108,14 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     };
   }
 
-  // 2. Skill follow up call list_tasks
-  if (hasSkillResult && !hasListTaskResult) {
+  // 2. Skill follow up OR explicitly listing tasks -> call list_tasks on todo-http-public
+  if ((hasSkillResult || lowerMsg.includes("task") || lowerMsg.includes("todo")) && !hasListTaskResult) {
     return {
       role: "assistant",
       content: null,
       tool_calls: [
         {
-          id: "call_list_1",
+          id: "call_list_tasks_1",
           type: "function",
           function: {
             name: "list_tasks",
@@ -127,8 +126,8 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     };
   }
 
-  // 3. Notes listing trigger ("what notes", "list notes")
-  if (!hasListNotesResult && (lowerMsg.includes("what note") || lowerMsg.includes("list note") || lowerMsg.includes("show note"))) {
+  // 3. Notes listing trigger ("note", "notes") -> call list_notes on notes-stdio
+  if (!hasListNotesResult && lowerMsg.includes("note")) {
     return {
       role: "assistant",
       content: null,
@@ -145,43 +144,25 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     };
   }
 
-  // 4. Notes saving trigger
-  if (!hasSaveNoteResult && (lowerMsg.includes("save note") || lowerMsg.includes("add note"))) {
+  // 4. Football standings / matches trigger -> call get_competition_standings on football-http-local
+  if (lowerMsg.includes("match") || lowerMsg.includes("standing") || lowerMsg.includes("football") || lowerMsg.includes("league")) {
     return {
       role: "assistant",
       content: null,
       tool_calls: [
         {
-          id: "call_note_1",
+          id: "call_football_1",
           type: "function",
           function: {
-            name: "save_note",
-            arguments: JSON.stringify({ title: "Project Meeting", content: "Discussed FIT LLM service integration." }),
+            name: "get_competition_standings",
+            arguments: JSON.stringify({ competition: "PL" }),
           },
         },
       ],
     };
   }
 
-  // 5. System expression trigger
-  if (lowerMsg.includes("calculate") || lowerMsg.includes("*") || lowerMsg.includes("+")) {
-    return {
-      role: "assistant",
-      content: null,
-      tool_calls: [
-        {
-          id: "call_calc_1",
-          type: "function",
-          function: {
-            name: "calculate_expression",
-            arguments: JSON.stringify({ expression: "15 * 84 + 10" }),
-          },
-        },
-      ],
-    };
-  }
-
-  // 6. Final Default Answer
+  // 5. Final Default Answer
   return {
     role: "assistant",
     content: "I have processed your request.",

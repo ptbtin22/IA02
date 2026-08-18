@@ -1,7 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { Tool as McpTool } from "@modelcontextprotocol/sdk/types.js";
+import type { Tool as McpTool, Resource as McpResource, Prompt as McpPrompt } from "@modelcontextprotocol/sdk/types.js";
 import fs from "node:fs";
 import type { LoadedMcpClients, McpConfig } from "./types.js";
 
@@ -25,10 +25,12 @@ function interpolateEnvVars(headers?: Record<string, string>): Record<string, st
 export async function loadMcpClients(): Promise<LoadedMcpClients> {
   const clientsMap = new Map<string, Client>(); // toolName -> client
   const allMcpTools: McpTool[] = [];
+  const allMcpResources: McpResource[] = [];
+  const allMcpPrompts: McpPrompt[] = [];
 
   if (!fs.existsSync(CONFIG_PATH)) {
     console.error(`Config file ${CONFIG_PATH} not found. Skipping MCP clients.`);
-    return { clientsMap, allMcpTools };
+    return { clientsMap, allMcpTools, allMcpResources, allMcpPrompts };
   }
 
   const config: McpConfig = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
@@ -55,12 +57,22 @@ export async function loadMcpClients(): Promise<LoadedMcpClients> {
 
       if (transport) {
         await client.connect(transport);
-        const { tools } = await client.listTools();
+
+        // Fetch Tools, Resources, and Prompts from server
+        const { tools } = await client.listTools().catch(() => ({ tools: [] }));
+        const { resources } = await client.listResources().catch(() => ({ resources: [] }));
+        const { prompts } = await client.listPrompts().catch(() => ({ prompts: [] }));
+
         for (const t of tools) {
           clientsMap.set(t.name, client);
           allMcpTools.push(t);
         }
-        console.error(`Connected to MCP server: ${serverName} (${tools.length} tools)`);
+        allMcpResources.push(...resources);
+        allMcpPrompts.push(...prompts);
+
+        console.error(
+          `Connected to MCP server: ${serverName} (${tools.length} tools, ${resources.length} resources, ${prompts.length} prompts)`
+        );
       }
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -68,5 +80,5 @@ export async function loadMcpClients(): Promise<LoadedMcpClients> {
     }
   }
 
-  return { clientsMap, allMcpTools };
+  return { clientsMap, allMcpTools, allMcpResources, allMcpPrompts };
 }
