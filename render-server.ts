@@ -38,9 +38,11 @@ app.get("/health", (_req: Request, res: Response) => {
 });
 
 const PORT = process.env.PORT || 3000;
+const hostUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+
 app.listen(PORT, () => {
   console.log(`📋 Public Todo Task Management Server listening on port ${PORT}`);
-  console.log(`- MCP Endpoint: http://localhost:${PORT}/mcp`);
-  console.log(`- REST API:     http://localhost:${PORT}/api/tasks`);
+  console.log(`- MCP Endpoint: ${hostUrl}/mcp`);
+  console.log(`- REST API:     ${hostUrl}/api/tasks`);
   console.log(`- Auth Key:     ${getApiKey()}`);
 });
