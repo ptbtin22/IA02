@@ -6,6 +6,16 @@ import { loadMcpClients } from "./src/mcp-loader.js";
 import { getChatCompletion } from "./src/llm.js";
 import { ia01LocalTools, executeLocalTool } from "./src/local-tools.js";
 import { loadSession, saveSession, clearSession, pruneMessages } from "./src/session.js";
+import {
+  colors,
+  printHeaderBanner,
+  printServerStatus,
+  printTurnBadge,
+  printToolCallBadge,
+  printToolResultPreview,
+  printSkillBanner,
+  printAgentResponse,
+} from "./src/cli-ui.js";
 
 /**
  * Execute a multi-step agent loop for a user prompt
@@ -26,7 +36,7 @@ async function runQueryLoop(
 
   while (turn < MAX_TURNS) {
     turn++;
-    console.log(`--- Agent Loop Turn ${turn} ---`);
+    printTurnBadge(turn);
 
     const prunedHistory = pruneMessages(messages, 20);
     const assistantMsg = await getChatCompletion(prunedHistory, advertisedTools);
@@ -34,7 +44,7 @@ async function runQueryLoop(
     await saveSession(messages);
 
     if (!assistantMsg.tool_calls || assistantMsg.tool_calls.length === 0) {
-      console.log(`\n💬 Agent Response:\n${assistantMsg.content}\n`);
+      printAgentResponse(assistantMsg.content || "(No response content)");
       break;
     }
 
@@ -44,7 +54,7 @@ async function runQueryLoop(
         ? (JSON.parse(toolCall.function.arguments || "{}") as Record<string, unknown>)
         : toolCall.function.arguments;
 
-      console.log(`🛠️ Call Tool: ${fnName}(${JSON.stringify(fnArgs)})`);
+      printToolCallBadge(fnName, fnArgs);
 
       let resultText = "";
 
@@ -53,16 +63,16 @@ async function runQueryLoop(
         const skillName = String(fnArgs.name || "");
         const skill = skills.find((s) => s.name === skillName);
         resultText = skill ? skill.fullContent : `Skill ${skillName} not found.`;
-        console.log(`\n🚀 Using Skill: "${skillName}"`);
-        console.log(`   -> Loaded procedural instructions for skill "${skillName}"\n`);
+        printSkillBanner(skillName);
       }
       // 2. IA01 Local File / Command tools
       else if (ia01LocalTools.some((t) => t.function.name === fnName)) {
         try {
           resultText = await executeLocalTool(fnName, fnArgs, rl);
-          console.log(`   -> Local Tool Result: ${resultText.slice(0, 100)}...`);
+          printToolResultPreview(resultText);
         } catch (err: unknown) {
           resultText = `Error: ${err instanceof Error ? err.message : String(err)}`;
+          printToolResultPreview(resultText);
         }
       }
       // 3. MCP Server tools (stdio / HTTP)
@@ -76,9 +86,10 @@ async function runQueryLoop(
         } else {
           resultText = JSON.stringify(res);
         }
-        console.log(`   -> MCP Tool Result: ${resultText}`);
+        printToolResultPreview(resultText);
       } else {
         resultText = `Unknown tool: ${fnName}`;
+        printToolResultPreview(resultText);
       }
 
       messages.push({
@@ -96,6 +107,8 @@ async function runQueryLoop(
  * Main Agent Entry Point
  */
 async function main(): Promise<void> {
+  printHeaderBanner();
+
   const skills = loadSkillsIndex();
   const { clientsMap, allMcpTools, allMcpResources, allMcpPrompts } = await loadMcpClients();
 
@@ -159,24 +172,24 @@ If a user request matches a skill, call use_skill FIRST, then follow its steps.`
   }
 
   // Interactive REPL Chat Mode
-  console.log("\n💬 Interactive MCP Agent Chat Mode Started!");
-  console.log("Type your prompt and press Enter. Type 'reset' to clear session. Type 'exit' to stop.\n");
+  console.log(`\n${colors.brightGreen}💬 Interactive MCP Agent Chat Mode Started!${colors.reset}`);
+  console.log(`${colors.dim}Commands: Type 'reset' to clear session history. Type 'exit' or 'quit' to exit.${colors.reset}\n`);
 
   const rl = readline.createInterface({ input, output });
 
   try {
     while (true) {
-      const userInput = await rl.question("You> ");
+      const userInput = await rl.question(`${colors.bold}${colors.brightCyan}You > ${colors.reset}`);
       const trimmed = userInput.trim();
 
       if (!trimmed) continue;
       if (trimmed.toLowerCase() === "exit" || trimmed.toLowerCase() === "quit") {
-        console.log("👋 Goodbye!");
+        console.log(`\n${colors.yellow}👋 Goodbye! Have a great day!${colors.reset}\n`);
         break;
       }
       if (trimmed.toLowerCase() === "clear" || trimmed.toLowerCase() === "reset") {
         messages = await clearSession(systemPrompt);
-        console.log("🧹 Session cleared.");
+        console.log(`\n${colors.green}🧹 Session history cleared.${colors.reset}\n`);
         continue;
       }
 
