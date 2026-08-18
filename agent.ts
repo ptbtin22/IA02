@@ -53,7 +53,8 @@ async function runQueryLoop(
         const skillName = String(fnArgs.name || "");
         const skill = skills.find((s) => s.name === skillName);
         resultText = skill ? skill.fullContent : `Skill ${skillName} not found.`;
-        console.log(`   -> Loaded skill instructions for "${skillName}"`);
+        console.log(`\n🚀 Using Skill: "${skillName}"`);
+        console.log(`   -> Loaded procedural instructions for skill "${skillName}"\n`);
       }
       // 2. IA01 Local File / Command tools
       else if (ia01LocalTools.some((t) => t.function.name === fnName)) {

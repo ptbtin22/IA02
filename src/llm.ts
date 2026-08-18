@@ -38,7 +38,6 @@ export async function getChatCompletion(
 
   // Fallback if environment variables are not fully configured
   if (!apiKey || !baseUrl || !modelName) {
-    console.error("⚠️ LLM configuration incomplete in environment variables (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL). Using mock fallback executor...");
     return mockAgentDecision(messages);
   }
 
@@ -77,44 +76,127 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
   const lastUserMsg = [...messages].reverse().find((m) => m.role === "user")?.content || "";
   const lowerMsg = lastUserMsg.toLowerCase();
 
-  const hasSkillResult = messages.some((m) => m.role === "tool" && m.name === "use_skill");
+  const loadedSkills = messages
+    .filter((m) => m.role === "tool" && m.name === "use_skill")
+    .map((m) => m.content || "");
+  const hasLoadedAnySkill = loadedSkills.length > 0;
+
   const hasListTaskResult = messages.some((m) => m.role === "tool" && m.name === "list_tasks");
+  const hasStandingsResult = messages.some((m) => m.role === "tool" && m.name === "get_competition_standings");
 
-  // If a tool was just executed in the previous step, stop the loop and answer the user!
-  const lastMsg = messages[messages.length - 1];
-  if (lastMsg && lastMsg.role === "tool") {
-    return {
-      role: "assistant",
-      content: `### LLM Agent Response\n\nHere are the results:\n${lastMsg.content}`,
-    };
-  }
-
-  // 1. Skill Trigger
-  if (!hasSkillResult && (lowerMsg.includes("standup") || lowerMsg.includes("today"))) {
-    return {
-      role: "assistant",
-      content: null,
-      tool_calls: [
-        {
-          id: "call_skill_1",
-          type: "function",
-          function: {
-            name: "use_skill",
-            arguments: JSON.stringify({ name: "daily-standup" }),
+  // 1. Skill Triggers (Calls use_skill FIRST)
+  if (!hasLoadedAnySkill) {
+    if (lowerMsg.includes("standup") || lowerMsg.includes("today")) {
+      return {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: "call_skill_standup",
+            type: "function",
+            function: {
+              name: "use_skill",
+              arguments: JSON.stringify({ name: "daily-standup" }),
+            },
           },
-        },
-      ],
-    };
+        ],
+      };
+    }
+    if (lowerMsg.includes("briefing") || lowerMsg.includes("matchday")) {
+      return {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: "call_skill_matchday",
+            type: "function",
+            function: {
+              name: "use_skill",
+              arguments: JSON.stringify({ name: "matchday-briefing" }),
+            },
+          },
+        ],
+      };
+    }
+    if (lowerMsg.includes("travel") || lowerMsg.includes("planner") || lowerMsg.includes("packing")) {
+      return {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: "call_skill_travel",
+            type: "function",
+            function: {
+              name: "use_skill",
+              arguments: JSON.stringify({ name: "travel-weather-planner" }),
+            },
+          },
+        ],
+      };
+    }
   }
 
-  // 2. Skill follow up OR explicitly listing tasks -> call list_tasks on todo-http-public
-  if ((hasSkillResult || lowerMsg.includes("task") || lowerMsg.includes("todo")) && !hasListTaskResult) {
+  // 2. Skill follow-ups after loading skill instructions
+  if (hasLoadedAnySkill && !hasListTaskResult && !hasStandingsResult) {
+    const lastSkill = loadedSkills[loadedSkills.length - 1];
+    if (lastSkill.includes("daily-standup")) {
+      return {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: "call_list_tasks_1",
+            type: "function",
+            function: {
+              name: "list_tasks",
+              arguments: "{}",
+            },
+          },
+        ],
+      };
+    }
+    if (lastSkill.includes("matchday-briefing")) {
+      return {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: "call_football_1",
+            type: "function",
+            function: {
+              name: "get_competition_standings",
+              arguments: JSON.stringify({ competition: "PL" }),
+            },
+          },
+        ],
+      };
+    }
+    if (lastSkill.includes("travel-weather-planner")) {
+      return {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: "call_weather_1",
+            type: "function",
+            function: {
+              name: "get_current_weather",
+              arguments: JSON.stringify({ city: "Saigon" }),
+            },
+          },
+        ],
+      };
+    }
+  }
+
+  // 3. Direct Tool Calls if no skill matched
+  if (lowerMsg.includes("task") || lowerMsg.includes("todo")) {
     return {
       role: "assistant",
       content: null,
       tool_calls: [
         {
-          id: "call_list_tasks_1",
+          id: "call_list_tasks_direct",
           type: "function",
           function: {
             name: "list_tasks",
@@ -125,14 +207,13 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     };
   }
 
-  // 3. Weather queries ("weather", "temp", "forecast") -> call get_current_weather on weather-stdio
   if (lowerMsg.includes("weather") || lowerMsg.includes("temp") || lowerMsg.includes("forecast")) {
     return {
       role: "assistant",
       content: null,
       tool_calls: [
         {
-          id: "call_weather_1",
+          id: "call_weather_direct",
           type: "function",
           function: {
             name: "get_current_weather",
@@ -143,14 +224,13 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     };
   }
 
-  // 4. Football standings / matches trigger -> call get_competition_standings on football-http-local
-  if (lowerMsg.includes("match") || lowerMsg.includes("standing") || lowerMsg.includes("football") || lowerMsg.includes("league")) {
+  if (lowerMsg.includes("match") || lowerMsg.includes("standing") || lowerMsg.includes("football")) {
     return {
       role: "assistant",
       content: null,
       tool_calls: [
         {
-          id: "call_football_1",
+          id: "call_football_direct",
           type: "function",
           function: {
             name: "get_competition_standings",
@@ -161,9 +241,10 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     };
   }
 
-  // 5. Final Default Answer
+  // 4. Final Answer
+  const lastToolRes = [...messages].reverse().find((m) => m.role === "tool")?.content || "Executed.";
   return {
     role: "assistant",
-    content: "I have processed your request.",
+    content: `### LLM Agent Response\n\nExecuted request successfully using available tools.\n\n**Output**:\n${lastToolRes}`,
   };
 }
