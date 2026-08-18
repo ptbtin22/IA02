@@ -1,15 +1,15 @@
 {
   "name": "todo-mcp",
   "version": "1.0.0",
-  "description": "3 Distinct MCP Servers (Notes Stdio, System Local HTTP, Todo Public Render) & Remote Agent Host",
-  "main": "notes-server.ts",
+  "description": "3 Distinct MCP Servers (Weather Stdio, Football Local HTTP, Todo Public Render) & Remote Agent Host",
+  "main": "weather-server.ts",
   "type": "module",
   "scripts": {
-    "start": "tsx notes-server.ts",
-    "notes": "tsx notes-server.ts",
+    "start": "tsx weather-server.ts",
+    "weather": "tsx weather-server.ts",
     "http": "tsx http.ts",
     "agent": "tsx agent.ts",
-    "inspector": "npx @modelcontextprotocol/inspector npx tsx notes-server.ts",
+    "inspector": "npx @modelcontextprotocol/inspector npx tsx weather-server.ts",
     "typecheck": "tsc --noEmit"
   },
   "keywords": ["mcp", "model-context-protocol", "agent", "todo", "typescript"],

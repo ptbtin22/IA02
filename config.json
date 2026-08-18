@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "notes-stdio": {
+    "weather-stdio": {
       "command": "npx",
-      "args": ["tsx", "notes-server.ts"]
+      "args": ["tsx", "weather-server.ts"]
     },
     "football-http-local": {
       "url": "http://localhost:3000/mcp"

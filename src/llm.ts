@@ -79,7 +79,6 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
 
   const hasSkillResult = messages.some((m) => m.role === "tool" && m.name === "use_skill");
   const hasListTaskResult = messages.some((m) => m.role === "tool" && m.name === "list_tasks");
-  const hasListNotesResult = messages.some((m) => m.role === "tool" && m.name === "list_notes");
 
   // If a tool was just executed in the previous step, stop the loop and answer the user!
   const lastMsg = messages[messages.length - 1];
@@ -126,18 +125,18 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     };
   }
 
-  // 3. Notes listing trigger ("note", "notes") -> call list_notes on notes-stdio
-  if (!hasListNotesResult && lowerMsg.includes("note")) {
+  // 3. Weather queries ("weather", "temp", "forecast") -> call get_current_weather on weather-stdio
+  if (lowerMsg.includes("weather") || lowerMsg.includes("temp") || lowerMsg.includes("forecast")) {
     return {
       role: "assistant",
       content: null,
       tool_calls: [
         {
-          id: "call_list_notes_1",
+          id: "call_weather_1",
           type: "function",
           function: {
-            name: "list_notes",
-            arguments: "{}",
+            name: "get_current_weather",
+            arguments: JSON.stringify({ city: "Saigon" }),
           },
         },
       ],
