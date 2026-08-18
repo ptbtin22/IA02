@@ -1,6 +1,6 @@
 import express, { Request, Response } from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createFootballServer } from "./football-server.js";
+import { createFootballServer } from "./src/servers/football.js";
 
 const app = express();
 app.use(express.json());

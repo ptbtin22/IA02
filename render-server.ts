@@ -1,6 +1,6 @@
 import express, { Request, Response } from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createTodoServer } from "./src/todo-server.js";
+import { createTodoServer } from "./src/servers/todo.js";
 import { restRouter } from "./src/routes/rest.js";
 import { bearerAuthGuard, getApiKey } from "./src/middleware/auth.js";
 

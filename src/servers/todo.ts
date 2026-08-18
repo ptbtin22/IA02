@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { addTask, completeTask, formatResourceText, formatTasksList } from "./tasks-store.js";
+import { addTask, completeTask, formatResourceText, formatTasksList } from "../tasks-store.js";
 
 /**
  * Creates and configures an McpServer instance with Todo tools, resources, and prompts.
