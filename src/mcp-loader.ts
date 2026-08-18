@@ -3,6 +3,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Tool as McpTool, Resource as McpResource, Prompt as McpPrompt } from "@modelcontextprotocol/sdk/types.js";
 import fs from "node:fs";
+import { spawn } from "node:child_process";
 import type { LoadedMcpClients, McpConfig } from "./types.js";
 
 const CONFIG_PATH = process.env.MCP_CONFIG || "config.json";
@@ -48,7 +49,8 @@ export async function loadMcpClients(): Promise<LoadedMcpClients> {
         });
       } else if (serverConf.url) {
         const resolvedHeaders = interpolateEnvVars(serverConf.headers);
-        transport = new StreamableHTTPClientTransport(new URL(serverConf.url), {
+        const urlObj = new URL(serverConf.url);
+        transport = new StreamableHTTPClientTransport(urlObj, {
           requestInit: {
             headers: resolvedHeaders,
           },
@@ -56,7 +58,29 @@ export async function loadMcpClients(): Promise<LoadedMcpClients> {
       }
 
       if (transport) {
-        await client.connect(transport);
+        try {
+          await client.connect(transport);
+        } catch (connErr) {
+          // If local HTTP server (localhost:3000) is not running, auto-spawn football-http-local.ts
+          if (serverConf.url && serverConf.url.includes("localhost:3000")) {
+            console.error(`🚀 Auto-starting local HTTP server (football-http-local.ts)...`);
+            const localProcess = spawn("npx", ["tsx", "football-http-local.ts"], {
+              stdio: "ignore",
+              detached: true,
+            });
+            localProcess.unref();
+            await new Promise((res) => setTimeout(res, 1500)); // Wait 1.5s for Express to listen
+
+            // Retry connection
+            const resolvedHeaders = interpolateEnvVars(serverConf.headers);
+            transport = new StreamableHTTPClientTransport(new URL(serverConf.url), {
+              requestInit: { headers: resolvedHeaders },
+            });
+            await client.connect(transport);
+          } else {
+            throw connErr;
+          }
+        }
 
         // Fetch Tools, Resources, and Prompts from server
         const { tools } = await client.listTools().catch(() => ({ tools: [] }));
