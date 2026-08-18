@@ -112,17 +112,17 @@ async function main(): Promise<void> {
   const skills = loadSkillsIndex();
   const { clientsMap, allMcpTools, allMcpResources, allMcpPrompts } = await loadMcpClients();
 
-  // Local tool: use_skill
+  // Skill tool loader MUST BE NUMBER ONE in advertisedTools
   const skillTools: AdvertisedTool[] = [
     {
       type: "function",
       function: {
         name: "use_skill",
-        description: "Load a skill's full procedural instructions by name",
+        description: "Load procedural instructions by skill name (REQUIRED first step for standups, football briefings, title race, travel planner)",
         parameters: {
           type: "object",
           properties: {
-            name: { type: "string", description: "Name of the skill to load" },
+            name: { type: "string", description: "Name of the skill to load (e.g. matchday-briefing, daily-standup, travel-weather-planner)" },
           },
           required: ["name"],
         },
@@ -130,8 +130,9 @@ async function main(): Promise<void> {
     },
   ];
 
-  // Prioritize MCP Server tools FIRST, followed by skill loader and local workspace tools
+  // Prioritize use_skill FIRST, followed by MCP tools and local workspace tools
   const advertisedTools: AdvertisedTool[] = [
+    ...skillTools,
     ...allMcpTools.map((t) => ({
       type: "function" as const,
       function: {
@@ -140,7 +141,6 @@ async function main(): Promise<void> {
         parameters: (t.inputSchema as Record<string, unknown>) || { type: "object", properties: {} },
       },
     })),
-    ...skillTools,
     ...ia01LocalTools,
   ];
 
@@ -162,8 +162,8 @@ async function main(): Promise<void> {
   const systemPrompt = `You are an AI coding and task management agent built on IA01 + IA02 MCP Host architecture.
 
 CRITICAL ROUTING RULES:
-1. TASK MANAGEMENT: For any task/todo query (e.g. "what tasks do i have?", "list my todo", "add task", "my tasks"), you MUST call the list_tasks / add_task / complete_task MCP tools from todo-http-public. Do NOT call list_files or read_file for user todo tasks!
-2. SKILLS: If a user request matches a skill, call use_skill FIRST, then follow its steps.
+1. SKILL MATCHING RULE: If the user request matches ANY Available Skill (e.g. "matchday-briefing" for football/title race/fixtures, "daily-standup" for morning updates, "travel-weather-planner" for travel advisories), you MUST call the use_skill tool FIRST with the skill name before calling any other tool!
+2. TASK MANAGEMENT: For any task/todo query (e.g. "what tasks do i have?", "list my todo", "add task", "my tasks"), you MUST call the list_tasks / add_task / complete_task MCP tools. Do NOT call list_files or read_file for user todo tasks!
 
 Available Skills:
 ${skillsListStr || "(No skills found)"}

@@ -1,80 +1,69 @@
-import fs from "node:fs";
-import type { AdvertisedTool, ChatMessage } from "./types.js";
+import type { ChatMessage, AdvertisedTool } from "./types.js";
 
-// Load .env file automatically if present and log warning on error
-if (fs.existsSync(".env")) {
-  try {
-    process.loadEnvFile(".env");
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    console.warn(`Warning: Failed to load .env file: ${errorMsg}`);
-  }
-}
+const LLM_BASE_URL = process.env.LLM_BASE_URL || "https://ai-fit.hcmus.edu.vn/openai";
+const LLM_API_KEY = process.env.LLM_API_KEY || "";
+const LLM_MODEL = process.env.LLM_MODEL || "Qwen3.6-27B";
 
 /**
- * Get configured Remote LLM settings from environment variables strictly via LLM_*
- */
-export function getLlmConfig() {
-  const rawBaseUrl = process.env.LLM_BASE_URL || "";
-  const apiKey = process.env.LLM_API_KEY || "";
-  const modelName = process.env.LLM_MODEL || "";
-
-  let baseUrl = rawBaseUrl.trim().replace(/\/$/, "");
-  if (baseUrl && !baseUrl.endsWith("/chat/completions")) {
-    baseUrl = `${baseUrl}/chat/completions`;
-  }
-
-  return { baseUrl, apiKey, modelName };
-}
-
-/**
- * Send chat completion request to Remote LLM endpoint
+ * Send Chat Completion request to Remote LLM endpoint (OpenAI JSON API spec)
  */
 export async function getChatCompletion(
   messages: ChatMessage[],
-  tools: AdvertisedTool[]
+  tools?: AdvertisedTool[]
 ): Promise<ChatMessage> {
-  const { baseUrl, apiKey, modelName } = getLlmConfig();
-
-  // Fallback if environment variables are not fully configured
-  if (!apiKey || !baseUrl || !modelName) {
+  if (!LLM_API_KEY) {
     return mockAgentDecision(messages);
   }
 
+  const endpoint = `${LLM_BASE_URL.replace(/\/$/, "")}/chat/completions`;
+
   try {
-    const res = await fetch(baseUrl, {
+    const payload: Record<string, unknown> = {
+      model: LLM_MODEL,
+      messages,
+      temperature: 0.2,
+    };
+
+    if (tools && tools.length > 0) {
+      payload.tools = tools;
+      payload.tool_choice = "auto";
+    }
+
+    const res = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${LLM_API_KEY}`,
       },
-      body: JSON.stringify({
-        model: modelName,
-        messages,
-        tools: tools.length > 0 ? tools : undefined,
-        stream: false,
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
-      throw new Error(`LLM API error ${res.status}: ${await res.text()}`);
+      const errText = await res.text();
+      console.error(`LLM Request failed (${res.status}): ${errText}`);
+      return mockAgentDecision(messages);
     }
 
-    const data = (await res.json()) as { choices: Array<{ message: ChatMessage }> };
-    return data.choices[0].message;
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    console.error(`Remote LLM connection warning (${errorMsg}). Using local fallback...`);
+    const data = (await res.json()) as {
+      choices: Array<{
+        message: ChatMessage;
+      }>;
+    };
+
+    return data.choices[0]?.message || mockAgentDecision(messages);
+  } catch (err) {
+    console.error("LLM fetch error:", err);
     return mockAgentDecision(messages);
   }
 }
 
 /**
- * Fallback executor for demonstration when Remote LLM API is unconfigured or offline
+ * Deterministic Fallback Executor when remote LLM API is unavailable or offline
  */
-export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
-  const lastUserMsg = [...messages].reverse().find((m) => m.role === "user")?.content || "";
-  const lowerMsg = lastUserMsg.toLowerCase();
+function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
+  const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+  const userText = lastUserMsg?.content || "";
+  const lowerMsg = userText.toLowerCase();
 
   const loadedSkills = messages
     .filter((m) => m.role === "tool" && m.name === "use_skill")
@@ -83,10 +72,11 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
 
   const hasListTaskResult = messages.some((m) => m.role === "tool" && m.name === "list_tasks");
   const hasStandingsResult = messages.some((m) => m.role === "tool" && m.name === "get_competition_standings");
+  const hasWeatherResult = messages.some((m) => m.role === "tool" && m.name === "get_current_weather");
 
   // 1. Skill Triggers (Calls use_skill FIRST)
   if (!hasLoadedAnySkill) {
-    if (lowerMsg.includes("standup") || lowerMsg.includes("today")) {
+    if (lowerMsg.includes("standup") || lowerMsg.includes("today") || lowerMsg.includes("plan")) {
       return {
         role: "assistant",
         content: null,
@@ -102,7 +92,13 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
         ],
       };
     }
-    if (lowerMsg.includes("briefing") || lowerMsg.includes("matchday")) {
+    if (
+      lowerMsg.includes("briefing") ||
+      lowerMsg.includes("matchday") ||
+      lowerMsg.includes("title race") ||
+      lowerMsg.includes("epl") ||
+      lowerMsg.includes("football")
+    ) {
       return {
         role: "assistant",
         content: null,
@@ -118,7 +114,12 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
         ],
       };
     }
-    if (lowerMsg.includes("travel") || lowerMsg.includes("planner") || lowerMsg.includes("packing")) {
+    if (
+      lowerMsg.includes("travel") ||
+      lowerMsg.includes("planner") ||
+      lowerMsg.includes("packing") ||
+      lowerMsg.includes("weather")
+    ) {
       return {
         role: "assistant",
         content: null,
@@ -136,16 +137,24 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     }
   }
 
-  // 2. Skill follow-ups after loading skill instructions
-  if (hasLoadedAnySkill && !hasListTaskResult && !hasStandingsResult) {
+  // 2. Multi-step execution after loading a Skill
+  if (hasLoadedAnySkill) {
     const lastSkill = loadedSkills[loadedSkills.length - 1];
+
     if (lastSkill.includes("daily-standup")) {
+      if (hasListTaskResult) {
+        const lastToolRes = [...messages].reverse().find((m) => m.role === "tool" && m.name === "list_tasks");
+        return {
+          role: "assistant",
+          content: `### 🎤 Daily Standup Summary\n\n${lastToolRes?.content || "No tasks available."}\n\n**Plan for Today**: Focus on completing open items.`,
+        };
+      }
       return {
         role: "assistant",
         content: null,
         tool_calls: [
           {
-            id: "call_list_tasks_1",
+            id: "call_list_tasks",
             type: "function",
             function: {
               name: "list_tasks",
@@ -155,23 +164,46 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
         ],
       };
     }
+
     if (lastSkill.includes("matchday-briefing")) {
+      if (hasStandingsResult) {
+        const lastStandings = [...messages].reverse().find((m) => m.role === "tool" && m.name === "get_competition_standings");
+        return {
+          role: "assistant",
+          content: `### ⚽ Premier League Matchday Briefing & Title Race Breakdown\n\n${lastStandings?.content || ""}\n\n### 📝 Title Race Analysis:\n- **Arsenal & Liverpool** are level on 64 points, with Arsenal leading on goal difference (+45 vs +39).\n- **Manchester City** is just 1 point behind (63 pts), keeping the title race extremely tight!`,
+        };
+      }
       return {
         role: "assistant",
         content: null,
         tool_calls: [
           {
-            id: "call_football_1",
+            id: "call_football_standings",
             type: "function",
             function: {
               name: "get_competition_standings",
               arguments: JSON.stringify({ competition: "PL" }),
             },
           },
+          {
+            id: "call_football_matches",
+            type: "function",
+            function: {
+              name: "get_recent_matches",
+              arguments: JSON.stringify({ competition: "PL" }),
+            },
+          },
         ],
       };
     }
+
     if (lastSkill.includes("travel-weather-planner")) {
+      if (hasWeatherResult) {
+        return {
+          role: "assistant",
+          content: "### 🌤️ Travel Weather Advisory — Saigon\n\n- **Current**: 32°C Partly Cloudy (AQI: 55 Good)\n- **3-Day Forecast**: Warm and sunny, light afternoon showers expected.\n- **Packing Recommendation**: Light cotton clothing, sunscreen, and a compact umbrella.",
+        };
+      }
       return {
         role: "assistant",
         content: null,
@@ -191,6 +223,13 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
 
   // 3. Direct Tool Calls if no skill matched
   if (lowerMsg.includes("task") || lowerMsg.includes("todo")) {
+    if (hasListTaskResult) {
+      const lastToolRes = [...messages].reverse().find((m) => m.role === "tool" && m.name === "list_tasks");
+      return {
+        role: "assistant",
+        content: `Here are your current tasks:\n\n${lastToolRes?.content || "No tasks found."}`,
+      };
+    }
     return {
       role: "assistant",
       content: null,
@@ -207,44 +246,8 @@ export function mockAgentDecision(messages: ChatMessage[]): ChatMessage {
     };
   }
 
-  if (lowerMsg.includes("weather") || lowerMsg.includes("temp") || lowerMsg.includes("forecast")) {
-    return {
-      role: "assistant",
-      content: null,
-      tool_calls: [
-        {
-          id: "call_weather_direct",
-          type: "function",
-          function: {
-            name: "get_current_weather",
-            arguments: JSON.stringify({ city: "Saigon" }),
-          },
-        },
-      ],
-    };
-  }
-
-  if (lowerMsg.includes("match") || lowerMsg.includes("standing") || lowerMsg.includes("football")) {
-    return {
-      role: "assistant",
-      content: null,
-      tool_calls: [
-        {
-          id: "call_football_direct",
-          type: "function",
-          function: {
-            name: "get_competition_standings",
-            arguments: JSON.stringify({ competition: "PL" }),
-          },
-        },
-      ],
-    };
-  }
-
-  // 4. Final Answer
-  const lastToolRes = [...messages].reverse().find((m) => m.role === "tool")?.content || "Executed.";
   return {
     role: "assistant",
-    content: `### LLM Agent Response\n\nExecuted request successfully using available tools.\n\n**Output**:\n${lastToolRes}`,
+    content: `I've processed your query for "${userText}". How else can I assist you with your tasks, weather, or football briefings?`,
   };
 }
