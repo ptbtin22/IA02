@@ -104,5 +104,4 @@ const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.arg
 if (isMain) {
   const server = createNotesServer();
   await server.connect(new StdioServerTransport());
-  console.error("notes stdio server ready"); // stderr ONLY!
 }
