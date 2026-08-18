@@ -1,6 +1,6 @@
 import express, { Request, Response } from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createSystemServer, getSystemInfoText } from "./src/system-server.js";
+import { createFootballServer } from "./src/football-server.js";
 import { bearerAuthGuard, getApiKey } from "./src/middleware/auth.js";
 
 const app = express();
@@ -9,7 +9,7 @@ app.use(express.json());
 // 1. Bearer Token Auth Guard on /mcp
 app.use("/mcp", bearerAuthGuard);
 
-// 2. MCP Streamable HTTP Route (Serving System & Utility Server)
+// 2. MCP Streamable HTTP Route (Serving Football Data Server)
 app.post("/mcp", async (req: Request, res: Response) => {
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined, // Stateless mode
@@ -19,15 +19,16 @@ app.post("/mcp", async (req: Request, res: Response) => {
     transport.close();
   });
 
-  const server = createSystemServer();
+  const server = createFootballServer();
   await server.connect(transport);
   await transport.handleRequest(req, res, req.body);
 });
 
-// 3. System REST API Router
-app.get("/api/system", (_req: Request, res: Response) => {
+// 3. Football REST API Router
+app.get("/api/football", (_req: Request, res: Response) => {
   res.json({
-    systemInfo: getSystemInfoText(),
+    status: "active",
+    apiProvider: "https://api.football-data.org/v4",
     timestamp: new Date().toISOString(),
   });
 });
@@ -39,8 +40,8 @@ app.get("/health", (_req: Request, res: Response) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`System Utility Server listening on port ${PORT}`);
+  console.log(`Football Data Server listening on port ${PORT}`);
   console.log(`- MCP Endpoint: http://localhost:${PORT}/mcp`);
-  console.log(`- REST API:     http://localhost:${PORT}/api/system`);
+  console.log(`- REST API:     http://localhost:${PORT}/api/football`);
   console.log(`- Auth Key:     ${getApiKey()}`);
 });

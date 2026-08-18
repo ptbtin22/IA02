@@ -4,7 +4,7 @@
       "command": "npx",
       "args": ["tsx", "notes-server.ts"]
     },
-    "system-http-local": {
+    "football-http-local": {
       "url": "http://localhost:3000/mcp",
       "headers": {
         "Authorization": "Bearer ${MCP_KEY}"
