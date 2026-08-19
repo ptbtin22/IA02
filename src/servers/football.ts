@@ -5,17 +5,17 @@ import { z } from "zod";
 import { getDemoFootballData } from "../football-mock-data.js";
 
 const API_BASE = "https://api.football-data.org/v4";
-const FOOTBALL_API_KEY = process.env.FOOTBALL_API_KEY || "";
 
 /**
  * Fetch helper with X-Auth-Token header
  */
 async function fetchFootballData(endpoint: string): Promise<Record<string, unknown>> {
+  const apiKey = process.env.FOOTBALL_API_KEY || "";
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  if (FOOTBALL_API_KEY) {
-    headers["X-Auth-Token"] = FOOTBALL_API_KEY;
+  if (apiKey) {
+    headers["X-Auth-Token"] = apiKey;
   }
 
   try {
@@ -28,6 +28,7 @@ async function fetchFootballData(endpoint: string): Promise<Record<string, unkno
     return getDemoFootballData(endpoint);
   }
 }
+
 
 /**
  * Factory function creating Football Data MCP Server

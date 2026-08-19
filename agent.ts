@@ -84,19 +84,24 @@ async function runQueryLoop(
       // 3. MCP Server tools (stdio / HTTP)
       else if (clientsMap.has(fnName)) {
         const client = clientsMap.get(fnName)!;
-        const res = await client.callTool({ name: fnName, arguments: fnArgs });
-        if (Array.isArray(res.content)) {
-          resultText = res.content
-            .map((c) => (c.type === "text" ? c.text : JSON.stringify(c)))
-            .join("\n");
-        } else {
-          resultText = JSON.stringify(res);
+        try {
+          const res = await client.callTool({ name: fnName, arguments: fnArgs });
+          if (Array.isArray(res.content)) {
+            resultText = res.content
+              .map((c) => (c.type === "text" ? c.text : JSON.stringify(c)))
+              .join("\n");
+          } else {
+            resultText = JSON.stringify(res);
+          }
+        } catch (err) {
+          resultText = `Tool error (${fnName}): ${err instanceof Error ? err.message : String(err)}`;
         }
         printToolResultPreview(resultText);
       } else {
         resultText = `Unknown tool: ${fnName}`;
         printToolResultPreview(resultText);
       }
+
 
       messages.push({
         role: "tool",

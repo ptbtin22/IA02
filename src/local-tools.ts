@@ -21,8 +21,9 @@ async function ensureWorkspace(): Promise<void> {
  * Safe path resolution preventing directory traversal out of workspace
  */
 function safePath(targetPath: string): string {
-  const resolved = path.resolve(".", targetPath);
-  if (!resolved.startsWith(WORKSPACE_DIR) && !resolved.startsWith(path.resolve("."))) {
+  const resolved = path.resolve(WORKSPACE_DIR, targetPath);
+  const wsPrefix = WORKSPACE_DIR + path.sep;
+  if (resolved !== WORKSPACE_DIR && !resolved.startsWith(wsPrefix)) {
     throw new Error(`Access denied: Path '${targetPath}' escapes the workspace directory.`);
   }
   return resolved;
@@ -185,12 +186,13 @@ export async function executeLocalTool(
       const relPath = String(args.path || "");
       const fullPath = safePath(relPath);
 
-      // Interactive user approval prompt
-      if (rl) {
-        const answer = await rl.question(`\n⚠️ DANGER: Delete file '${relPath}'? (y/N): `);
-        if (answer.trim().toLowerCase() !== "y") {
-          return `Operation cancelled by user. File '${relPath}' was NOT deleted.`;
-        }
+      // Interactive user approval prompt — deny if no readline interface is available
+      if (!rl) {
+        return `Operation denied: 'delete_file' requires interactive confirmation but no terminal is available.`;
+      }
+      const answer = await rl.question(`\n⚠️ DANGER: Delete file '${relPath}'? (y/N): `);
+      if (answer.trim().toLowerCase() !== "y") {
+        return `Operation cancelled by user. File '${relPath}' was NOT deleted.`;
       }
 
       await fs.unlink(fullPath);
@@ -200,12 +202,13 @@ export async function executeLocalTool(
     case "run_command": {
       const cmd = String(args.command || "");
 
-      // Interactive user approval prompt
-      if (rl) {
-        const answer = await rl.question(`\n⚠️ SECURITY: Approve running command: '${cmd}'? (y/N): `);
-        if (answer.trim().toLowerCase() !== "y") {
-          return `Command execution cancelled by user: '${cmd}'`;
-        }
+      // Interactive user approval prompt — deny if no readline interface is available
+      if (!rl) {
+        return `Operation denied: 'run_command' requires interactive confirmation but no terminal is available.`;
+      }
+      const answer = await rl.question(`\n⚠️ SECURITY: Approve running command: '${cmd}'? (y/N): `);
+      if (answer.trim().toLowerCase() !== "y") {
+        return `Command execution cancelled by user: '${cmd}'`;
       }
 
       try {

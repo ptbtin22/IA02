@@ -1,26 +1,26 @@
 import type { Request, Response, NextFunction } from "express";
 import crypto from "node:crypto";
 
-// Fallback to random secure hex token if process.env.MCP_KEY is unconfigured
-const KEY = process.env.MCP_KEY || crypto.randomBytes(32).toString("hex");
-
 /**
  * Bearer Token API Key Guard Middleware for Express /mcp route.
+ * Uses timing-safe comparison to prevent timing attacks.
  */
 export function bearerAuthGuard(req: Request, res: Response, next: NextFunction): void | Response {
-  const token = (req.headers.authorization ?? "").replace("Bearer ", "").trim();
-  if (token !== KEY) {
+  const KEY = process.env.MCP_KEY || "";
+  // Parse Authorization header properly — require "Bearer " prefix
+  const authHeader = req.headers.authorization ?? "";
+  const match = /^Bearer\s+(.+)$/i.exec(authHeader);
+  const token = match ? match[1].trim() : "";
+
+  // Constant-time comparison using SHA-256 digests to prevent timing attacks
+  const tokenDigest = crypto.createHash("sha256").update(token).digest();
+  const keyDigest = crypto.createHash("sha256").update(KEY).digest();
+
+  if (token.length === 0 || !crypto.timingSafeEqual(tokenDigest, keyDigest)) {
     return res
       .status(401)
       .set("WWW-Authenticate", 'Bearer realm="MCP Access"')
       .json({ error: "unauthorized", message: "Invalid or missing Bearer API Key" });
   }
   next();
-}
-
-/**
- * Get active API Key
- */
-export function getApiKey(): string {
-  return KEY;
 }

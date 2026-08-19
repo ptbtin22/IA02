@@ -38,9 +38,9 @@ An end-to-end, multi-transport **Model Context Protocol (MCP)** system featuring
 
 | Server Name | Transport Protocol | Entry Point | Tools | Resources | Prompts |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`weather-stdio`** | **Stdio** (`child_process`) | [`weather-server.ts`](file:///Users/tinpham/MyCode/Projects/todo-mcp/weather-server.ts) | `get_current_weather`, `get_weather_forecast`, `get_air_quality` | `weather://current` | `weather_report` |
-| **`football-http-local`** | **Local HTTP** (`http://localhost:3000/mcp`) | [`football-http-local.ts`](file:///Users/tinpham/MyCode/Projects/todo-mcp/football-http-local.ts) | `get_football_competitions`, `get_competition_standings`, `get_recent_matches` | `football://standings` | `football_summary` |
-| **`todo-http-public`** | **Public HTTP** (`https://todo-mcp-http.onrender.com/mcp`) | [`render-server.ts`](file:///Users/tinpham/MyCode/Projects/todo-mcp/render-server.ts) | `add_task`, `list_tasks`, `complete_task` | `todo://list` | `plan_my_day` |
+| **`weather-stdio`** | **Stdio** (`child_process`) | [`weather-server.ts`](weather-server.ts) | `get_current_weather`, `get_weather_forecast`, `get_air_quality` | `weather://current` | `weather_report` |
+| **`football-http-local`** | **Local HTTP** (`http://localhost:3000/mcp`) | [`football-http-local.ts`](football-http-local.ts) | `get_football_competitions`, `get_competition_standings`, `get_recent_matches` | `football://standings` | `football_summary` |
+| **`todo-http-public`** | **Public HTTP** (`https://todo-mcp-http.onrender.com/mcp`) | [`render-server.ts`](render-server.ts) | `add_task`, `list_tasks`, `complete_task` | `todo://list` | `plan_my_day` |
 
 ---
 
@@ -48,9 +48,9 @@ An end-to-end, multi-transport **Model Context Protocol (MCP)** system featuring
 
 Located under `.skills/`, procedural skill guides instruct the agent to execute structured multi-step workflows:
 
-1. 📋 **`daily-standup`** ([`.skills/daily-standup/SKILL.md`](file:///Users/tinpham/MyCode/Projects/todo-mcp/.skills/daily-standup/SKILL.md)): Calls `list_tasks` on `todo-http-public` to format morning standup reports.
-2. ⚽ **`matchday-briefing`** ([`.skills/matchday-briefing/SKILL.md`](file:///Users/tinpham/MyCode/Projects/todo-mcp/.skills/matchday-briefing/SKILL.md)): Calls `get_competition_standings` and `get_recent_matches` on `football-http-local` to analyze title races and match fixtures.
-3. 🌤️ **`travel-weather-planner`** ([`.skills/travel-weather-planner/SKILL.md`](file:///Users/tinpham/MyCode/Projects/todo-mcp/.skills/travel-weather-planner/SKILL.md)): Calls `get_current_weather`, `get_weather_forecast`, and `get_air_quality` on `weather-stdio` to generate travel weather advisories and packing checklists.
+1. 📋 **`daily-standup`** ([`.skills/daily-standup/SKILL.md`](.skills/daily-standup/SKILL.md)): Calls `list_tasks` on `todo-http-public` to format morning standup reports.
+2. ⚽ **`matchday-briefing`** ([`.skills/matchday-briefing/SKILL.md`](.skills/matchday-briefing/SKILL.md)): Calls `get_competition_standings` and `get_recent_matches` on `football-http-local` to analyze title races and match fixtures.
+3. 🌤️ **`travel-weather-planner`** ([`.skills/travel-weather-planner/SKILL.md`](.skills/travel-weather-planner/SKILL.md)): Calls `get_current_weather`, `get_weather_forecast`, and `get_air_quality` on `weather-stdio` to generate travel weather advisories and packing checklists.
 
 ---
 

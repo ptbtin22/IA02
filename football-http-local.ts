@@ -1,3 +1,9 @@
+try {
+  process.loadEnvFile(".env");
+} catch {
+  // .env not present — OK in production
+}
+
 import express, { Request, Response } from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createFootballServer } from "./src/servers/football.js";
