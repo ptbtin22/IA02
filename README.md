@@ -2,9 +2,9 @@
 
 An end-to-end, multi-transport **Model Context Protocol (MCP)** system featuring **3 distinct MCP Servers** (Stdio, Local HTTP, Cloud HTTP), procedural **Agent Skills**, interactive **Local File/Command Tools**, session persistence, and a high-contrast **CLI Agent Host**.
 
-🎥 **Watch YouTube Demo Video**: [https://youtu.be/UKLkTBR9wqo](https://youtu.be/UKLkTBR9wqo)
+🎥 **Watch YouTube Demo Video**: [https://youtu.be/6D2aUKNFjKE](https://youtu.be/6D2aUKNFjKE)
 
-[![Watch the Demo Video](https://img.youtube.com/vi/UKLkTBR9wqo/maxresdefault.jpg)](https://youtu.be/UKLkTBR9wqo)
+[![Watch the Demo Video](https://img.youtube.com/vi/6D2aUKNFjKE/maxresdefault.jpg)](https://youtu.be/6D2aUKNFjKE)
 
 ---
 
